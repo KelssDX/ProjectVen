@@ -39,8 +39,8 @@ const LogoCarousel = () => {
   }, []);
 
   return (
-    <section ref={sectionRef} className="py-16 bg-white overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8">
+    <section ref={sectionRef} className="py-16 bg-transparent overflow-hidden relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 relative z-10">
         <p className="text-center text-sm font-medium text-gray-500 uppercase tracking-wider">
           Trusted by leading companies worldwide
         </p>
@@ -48,8 +48,8 @@ const LogoCarousel = () => {
 
       <div className="relative">
         {/* Gradient masks */}
-        <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-white to-transparent z-10" />
-        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-white to-transparent z-10" />
+        <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-[#f8fbff] to-transparent z-10" />
+        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#f8fbff] to-transparent z-10" />
 
         {/* Scrolling track */}
         <div className="flex animate-logo-scroll hover:[animation-play-state:paused]">

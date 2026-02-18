@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Play, ArrowRight } from 'lucide-react';
 import gsap from 'gsap';
 
 const Hero = () => {
+  const navigate = useNavigate();
   const heroRef = useRef<HTMLDivElement>(null);
   const headlineRef = useRef<HTMLDivElement>(null);
   const subheadlineRef = useRef<HTMLParagraphElement>(null);
@@ -13,7 +15,6 @@ const Hero = () => {
 
   useEffect(() => {
     const ctx = gsap.context(() => {
-      // Headline animation - word by word
       const words = headlineRef.current?.querySelectorAll('.word');
       if (words) {
         gsap.fromTo(
@@ -31,7 +32,6 @@ const Hero = () => {
         );
       }
 
-      // Subheadline animation
       gsap.fromTo(
         subheadlineRef.current,
         { opacity: 0, filter: 'blur(10px)' },
@@ -44,7 +44,6 @@ const Hero = () => {
         }
       );
 
-      // CTA buttons animation
       gsap.fromTo(
         ctaRef.current?.children || [],
         { scale: 0.8, opacity: 0 },
@@ -58,7 +57,6 @@ const Hero = () => {
         }
       );
 
-      // Hero image animation
       gsap.fromTo(
         imageRef.current,
         { rotateY: 15, x: 100, opacity: 0 },
@@ -72,7 +70,6 @@ const Hero = () => {
         }
       );
 
-      // Floating shapes animation
       const shapes = shapesRef.current?.querySelectorAll('.shape');
       if (shapes) {
         shapes.forEach((shape, index) => {
@@ -94,15 +91,14 @@ const Hero = () => {
     return () => ctx.revert();
   }, []);
 
-  // Parallax effect on scroll
   useEffect(() => {
     const handleScroll = () => {
       const scrollY = window.scrollY;
       const heroHeight = heroRef.current?.offsetHeight || 0;
-      
+
       if (scrollY < heroHeight) {
         const progress = scrollY / heroHeight;
-        
+
         if (headlineRef.current) {
           headlineRef.current.style.transform = `translateY(${-scrollY * 0.3}px)`;
         }
@@ -112,8 +108,7 @@ const Hero = () => {
         if (imageRef.current) {
           imageRef.current.style.transform = `translateY(${-scrollY * 0.2}px) rotateY(${-progress * 5}deg)`;
         }
-        
-        // Fade out content
+
         const fadeStart = heroHeight * 0.5;
         if (scrollY > fadeStart) {
           const fadeProgress = (scrollY - fadeStart) / (heroHeight * 0.5);
@@ -147,9 +142,8 @@ const Hero = () => {
     <section
       id="home"
       ref={heroRef}
-      className="relative min-h-screen flex items-center overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100"
+      className="relative min-h-screen flex items-center overflow-hidden bg-gradient-to-br from-gray-50/80 via-white/70 to-sky-50/80"
     >
-      {/* Floating Shapes */}
       <div ref={shapesRef} className="absolute inset-0 pointer-events-none overflow-hidden">
         <div
           className="shape absolute top-20 left-10 w-32 h-32 rounded-full bg-[var(--brand-primary)]"
@@ -158,7 +152,7 @@ const Hero = () => {
         <div
           className="shape absolute top-40 right-20 w-24 h-24 rounded-2xl"
           style={{
-            background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
+            background: 'linear-gradient(135deg, #06b6d4, #0ea5e9)',
             animation: 'shapeFloat 10s ease-in-out infinite 2s',
           }}
         />
@@ -174,7 +168,6 @@ const Hero = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 pt-32">
         <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Content */}
           <div className="relative z-10">
             <div ref={headlineRef} className="perspective-1000">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight">
@@ -190,8 +183,8 @@ const Hero = () => {
               ref={subheadlineRef}
               className="mt-6 text-lg text-gray-600 max-w-lg"
             >
-              The ultimate business ecosystem where SMEs and entrepreneurs connect, 
-              share resources, and build successful partnerships. Join thousands of 
+              The ultimate business ecosystem where SMEs and entrepreneurs connect,
+              share resources, and build successful partnerships. Join thousands of
               businesses already growing together.
             </p>
 
@@ -199,6 +192,7 @@ const Hero = () => {
               <Button
                 size="lg"
                 className="bg-[var(--brand-primary)] hover:bg-[var(--brand-primary-dark)] text-white px-8 py-6 text-base font-semibold btn-magnetic animate-pulse-glow group"
+                onClick={() => navigate('/register')}
               >
                 Get Started Free
                 <ArrowRight className="ml-2 w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -207,13 +201,13 @@ const Hero = () => {
                 size="lg"
                 variant="outline"
                 className="border-2 border-gray-300 hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)] px-8 py-6 text-base font-semibold group"
+                onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 <Play className="mr-2 w-5 h-5 transition-transform group-hover:scale-110" />
                 Watch Demo
               </Button>
             </div>
 
-            {/* Social Proof */}
             <div className="mt-10 flex items-center gap-4">
               <div className="flex -space-x-3">
                 {avatars.map((avatar, index) => (
@@ -239,7 +233,6 @@ const Hero = () => {
             </div>
           </div>
 
-          {/* Hero Image */}
           <div
             ref={imageRef}
             className="relative lg:pl-8 preserve-3d"
@@ -250,16 +243,14 @@ const Hero = () => {
                 alt="Business professionals collaborating"
                 className="w-full h-auto"
               />
-              {/* Overlay gradient */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent" />
             </div>
 
-            {/* Floating badge */}
             <div
               className="absolute -bottom-6 -left-6 bg-white rounded-xl shadow-xl p-4 flex items-center gap-3"
               style={{ animation: 'float 5s ease-in-out infinite' }}
             >
-              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #7c3aed, #8b5cf6)" }}>
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #06b6d4, #0ea5e9)" }}>
                 <span className="text-white text-xl font-bold">$</span>
               </div>
               <div>
@@ -268,7 +259,6 @@ const Hero = () => {
               </div>
             </div>
 
-            {/* Another floating badge */}
             <div
               className="absolute -top-4 -right-4 bg-white rounded-xl shadow-xl p-4 flex items-center gap-3"
               style={{ animation: 'float 6s ease-in-out infinite 1s' }}

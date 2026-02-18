@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Button } from '@/components/ui/button';
@@ -7,6 +8,7 @@ import { ArrowRight, Mail } from 'lucide-react';
 gsap.registerPlugin(ScrollTrigger);
 
 const CTA = () => {
+  const navigate = useNavigate();
   const sectionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLDivElement>(null);
@@ -198,6 +200,7 @@ const CTA = () => {
                 size="lg"
                 className="cta-btn bg-white text-[var(--brand-primary)] hover:bg-gray-100 px-8 py-6 text-base font-semibold btn-magnetic group"
                 style={{ animation: 'ctaPulse 3s ease-in-out infinite' }}
+                onClick={() => navigate('/register')}
               >
                 Get Started Free
                 <ArrowRight className="ml-2 w-5 h-5 transition-transform group-hover:translate-x-1" />
@@ -206,6 +209,7 @@ const CTA = () => {
                 size="lg"
                 variant="outline"
                 className="cta-btn border-2 border-white text-white hover:bg-white hover:text-[var(--brand-primary)] px-8 py-6 text-base font-semibold"
+                onClick={() => navigate('/login')}
               >
                 <Mail className="mr-2 w-5 h-5" />
                 Contact Sales

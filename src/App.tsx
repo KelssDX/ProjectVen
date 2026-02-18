@@ -1,21 +1,10 @@
-import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { EngagementProvider } from '@/context/EngagementContext';
-
-// Landing Page Sections
-import Navigation from './sections/Navigation';
-import Hero from './sections/Hero';
-import LogoCarousel from './sections/LogoCarousel';
-import About from './sections/About';
-import Features from './sections/Features';
-import HowItWorks from './sections/HowItWorks';
-
-import CTA from './sections/CTA';
-import Footer from './sections/Footer';
+import LandingPage from './pages/landing/LandingPage';
 
 // Auth Pages
 import Login from './pages/auth/Login';
@@ -54,31 +43,6 @@ import Mentorship from './pages/mentorship/Mentorship';
 
 // Register GSAP plugins
 gsap.registerPlugin(ScrollTrigger);
-
-// Landing Page Component
-const LandingPage = () => {
-  useEffect(() => {
-    ScrollTrigger.refresh();
-    return () => {
-      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
-    };
-  }, []);
-
-  return (
-    <div className="min-h-screen bg-white">
-      <Navigation />
-      <main>
-        <Hero />
-        <LogoCarousel />
-        <About />
-        <Features />
-        <HowItWorks />
-        <CTA />
-      </main>
-      <Footer />
-    </div>
-  );
-};
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {

@@ -132,14 +132,14 @@ const Marketplace = () => {
 
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         p.description.toLowerCase().includes(searchQuery.toLowerCase());
+      p.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
   const filteredServices = services.filter(s => {
     const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         s.description.toLowerCase().includes(searchQuery.toLowerCase());
+      s.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || s.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -330,7 +330,7 @@ const Marketplace = () => {
                   {selectedItem.type === 'product' ? 'Order Product' : 'Book Service'}
                 </DialogTitle>
                 <DialogDescription>
-                  {selectedItem.type === 'product' 
+                  {selectedItem.type === 'product'
                     ? 'Complete your order details below'
                     : 'Select your preferred date and time'
                   }
@@ -396,7 +396,7 @@ const Marketplace = () => {
                   <span className="text-xl font-bold">${selectedItem.data.price}</span>
                 </div>
 
-                <Button 
+                <Button
                   className="w-full bg-[var(--brand-primary)]"
                   onClick={() => {
                     setIsOrderDialogOpen(false);
@@ -445,9 +445,8 @@ const Marketplace = () => {
                       key={value}
                       type="button"
                       onClick={() => setReviewRating(value)}
-                      className={`rounded-full p-1 transition ${
-                        value <= reviewRating ? 'text-amber-500' : 'text-muted-foreground'
-                      }`}
+                      className={`rounded-full p-1 transition ${value <= reviewRating ? 'text-amber-500' : 'text-muted-foreground'
+                        }`}
                       aria-label={`Rate ${value} out of 5`}
                     >
                       <Star className={`h-6 w-6 ${value <= reviewRating ? 'fill-current' : ''}`} />
@@ -519,9 +518,8 @@ const Marketplace = () => {
                                   {[1, 2, 3, 4, 5].map((value) => (
                                     <Star
                                       key={value}
-                                      className={`h-3 w-3 ${
-                                        value <= review.rating ? 'text-amber-500 fill-current' : 'text-muted-foreground'
-                                      }`}
+                                      className={`h-3 w-3 ${value <= review.rating ? 'text-amber-500 fill-current' : 'text-muted-foreground'
+                                        }`}
                                     />
                                   ))}
                                 </div>
@@ -567,9 +565,8 @@ const VenScoreRow = ({ summary, onReview }: VenScoreRowProps) => {
           {[1, 2, 3, 4, 5].map((value) => (
             <Star
               key={value}
-              className={`h-3.5 w-3.5 ${
-                value <= roundedRating ? 'text-amber-500 fill-current' : 'text-muted-foreground'
-              }`}
+              className={`h-3.5 w-3.5 ${value <= roundedRating ? 'text-amber-500 fill-current' : 'text-muted-foreground'
+                }`}
             />
           ))}
         </div>
@@ -605,7 +602,7 @@ const ProductCard = ({ product, post, onOrder, onReview, reviewSummary }: Produc
   const handleBookmarkToggle = () => {
     if (bookmarked) {
       removeBookmark(post.id);
-      setBookmarkCount((count) => Math.max(0, count - 1));
+      setBookmarkCount((count: number) => Math.max(0, count - 1));
       return;
     }
 
@@ -623,7 +620,7 @@ const ProductCard = ({ product, post, onOrder, onReview, reviewSummary }: Produc
       sourceId: post.id,
     });
 
-    setBookmarkCount((count) => count + 1);
+    setBookmarkCount((count: number) => count + 1);
   };
 
   return (
@@ -636,9 +633,8 @@ const ProductCard = ({ product, post, onOrder, onReview, reviewSummary }: Produc
         />
         <div className="absolute top-2 right-2 flex items-center gap-1">
           <button
-            className={`w-8 h-8 bg-white rounded-full flex items-center justify-center shadow hover:bg-gray-100 ${
-              bookmarked ? 'text-[var(--brand-primary)]' : 'text-gray-600'
-            }`}
+            className={`w-8 h-8 bg-white rounded-full flex items-center justify-center shadow hover:bg-gray-100 ${bookmarked ? 'text-[var(--brand-primary)]' : 'text-gray-600'
+              }`}
             onClick={handleBookmarkToggle}
             aria-label={bookmarked ? 'Remove bookmark' : 'Save product'}
           >
@@ -717,7 +713,7 @@ const ServiceCard = ({ service, post, onBook, onReview, reviewSummary }: Service
   const handleBookmarkToggle = () => {
     if (bookmarked) {
       removeBookmark(post.id);
-      setBookmarkCount((count) => Math.max(0, count - 1));
+      setBookmarkCount((count: number) => Math.max(0, count - 1));
       return;
     }
 
@@ -735,7 +731,7 @@ const ServiceCard = ({ service, post, onBook, onReview, reviewSummary }: Service
       sourceId: post.id,
     });
 
-    setBookmarkCount((count) => count + 1);
+    setBookmarkCount((count: number) => count + 1);
   };
 
   return (
@@ -765,9 +761,8 @@ const ServiceCard = ({ service, post, onBook, onReview, reviewSummary }: Service
         </Badge>
         <div className="absolute top-2 right-2 flex items-center gap-1">
           <button
-            className={`w-8 h-8 bg-white rounded-full flex items-center justify-center shadow hover:bg-gray-100 ${
-              bookmarked ? 'text-[var(--brand-primary)]' : 'text-gray-600'
-            }`}
+            className={`w-8 h-8 bg-white rounded-full flex items-center justify-center shadow hover:bg-gray-100 ${bookmarked ? 'text-[var(--brand-primary)]' : 'text-gray-600'
+              }`}
             onClick={handleBookmarkToggle}
             aria-label={bookmarked ? 'Remove bookmark' : 'Save service'}
           >

@@ -139,9 +139,9 @@ const About = () => {
   ];
 
   return (
-    <section id="about" ref={sectionRef} className="py-20 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-5 gap-12 items-start">
+    <section id="about" ref={sectionRef} className="py-24 bg-transparent relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="grid lg:grid-cols-5 gap-12 items-start rounded-3xl border border-white/60 bg-white/70 backdrop-blur-md shadow-[0_20px_45px_rgba(14,116,144,0.12)] p-8 lg:p-10">
           {/* Left Content */}
           <div className="lg:col-span-2">
             <span className="inline-block px-4 py-2 rounded-full bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] text-sm font-medium mb-6">

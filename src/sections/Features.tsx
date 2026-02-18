@@ -181,8 +181,8 @@ const Features = () => {
   const headlineText = 'Everything You Need to Succeed';
 
   return (
-    <section id="features" ref={sectionRef} className="py-20 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="features" ref={sectionRef} className="py-24 bg-transparent relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Header */}
         <div ref={headerRef} className="text-center mb-16">
           <span className="section-label inline-block px-4 py-2 rounded-full bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] text-sm font-medium mb-4">
@@ -201,7 +201,7 @@ const Features = () => {
         </div>
 
         {/* Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 p-2">
           {features.map((feature, index) => (
             <FeatureCard
               key={index}

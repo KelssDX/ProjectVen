@@ -185,8 +185,8 @@ const HowItWorks = () => {
   ];
 
   return (
-    <section id="how-it-works" ref={sectionRef} className="py-20 bg-gray-50 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="how-it-works" ref={sectionRef} className="py-24 bg-transparent overflow-hidden relative">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 rounded-3xl border border-white/60 bg-white/65 backdrop-blur-md shadow-[0_20px_45px_rgba(30,64,175,0.1)] p-8 lg:p-10">
         {/* Header */}
         <div ref={headerRef} className="text-center mb-16">
           <span className="inline-block px-4 py-2 rounded-full bg-[var(--brand-primary)]/10 text-[var(--brand-primary)] text-sm font-medium mb-4">
