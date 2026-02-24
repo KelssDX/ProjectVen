@@ -1,0 +1,31 @@
+﻿src/components/landing/CitySkyline.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/landing/DashboardMockup.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/landing/DashboardMockup.tsx(2,24): error TS6133: 'Menu' is declared but its value is never read.
+src/components/landing/GravityHero.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/landing/GravityHero.tsx(1,36): error TS6133: 'useState' is declared but its value is never read.
+src/components/landing/GravityHero.tsx(3,27): error TS1149: File name 'C:/dev/ProjectVen-main/node_modules/gsap/types/Draggable.d.ts' differs from already included file name 'C:/dev/ProjectVen-main/node_modules/gsap/types/draggable.d.ts' only in casing.
+  The file is in the program because:
+    Referenced via 'draggable.d.ts' from file 'C:/dev/ProjectVen-main/node_modules/gsap/types/index.d.ts'
+    Imported via 'gsap/Draggable' from file 'C:/dev/ProjectVen-main/src/components/landing/GravityHero.tsx' with packageId 'gsap/types/Draggable.d.ts@3.14.2'
+src/components/landing/GravityHero.tsx(29,11): error TS6133: 'navigate' is declared but its value is never read.
+src/components/landing/GravityHero.tsx(37,45): error TS6133: 'i' is declared but its value is never read.
+src/components/landing/GravityHero.tsx(79,21): error TS2322: Type '() => gsap.core.Tween' is not assignable to type 'Callback'.
+  Type 'Tween' is not assignable to type 'void'.
+src/components/landing/GravityHero.tsx(80,21): error TS2322: Type '() => gsap.core.Tween' is not assignable to type 'Callback'.
+  Type 'Tween' is not assignable to type 'void'.
+src/components/landing/GravityHero.tsx(108,21): error TS2322: Type '(el: HTMLDivElement | null) => HTMLDivElement | null' is not assignable to type 'Ref<HTMLDivElement> | undefined'.
+  Type '(el: HTMLDivElement | null) => HTMLDivElement | null' is not assignable to type '(instance: HTMLDivElement | null) => void | (() => VoidOrUndefinedOnly)'.
+    Type 'HTMLDivElement | null' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'.
+      Type 'null' is not assignable to type 'void | (() => VoidOrUndefinedOnly)'.
+src/components/landing/TextReveal.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/components/landing/Typewriter.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/dashboard/Settings.tsx(659,72): error TS2345: Argument of type 'string' is not assignable to parameter of type 'VerificationBadge'.
+src/pages/feed/TheHub.tsx(322,35): error TS2322: Type 'Dispatch<SetStateAction<"search" | "my-feed" | "explore">>' is not assignable to type '(value: string) => void'.
+  Types of parameters 'value' and 'value' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<"search" | "my-feed" | "explore">'.
+src/pages/landing/LandingPage.tsx(1,8): error TS6133: 'React' is declared but its value is never read.
+src/pages/landing/LandingPage.tsx(1,28): error TS6133: 'useRef' is declared but its value is never read.
+src/pages/marketplace/Marketplace.tsx(608,25): error TS7006: Parameter 'count' implicitly has an 'any' type.
+src/pages/marketplace/Marketplace.tsx(626,23): error TS7006: Parameter 'count' implicitly has an 'any' type.
+src/pages/marketplace/Marketplace.tsx(720,25): error TS7006: Parameter 'count' implicitly has an 'any' type.
+src/pages/marketplace/Marketplace.tsx(738,23): error TS7006: Parameter 'count' implicitly has an 'any' type.
