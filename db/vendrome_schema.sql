@@ -5,6 +5,7 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- =========================
 -- Enums
@@ -39,6 +40,7 @@ CREATE TYPE mentorship_status AS ENUM ('pending', 'active', 'completed', 'cancel
 CREATE TYPE ledger_entry_type AS ENUM ('debit', 'credit');
 CREATE TYPE notification_type AS ENUM ('system', 'message', 'connection', 'payment', 'marketing', 'security');
 CREATE TYPE audit_actor_type AS ENUM ('user', 'service', 'admin');
+CREATE TYPE moderation_status AS ENUM ('pending', 'under_review', 'actioned', 'dismissed');
 
 -- =========================
 -- Utility trigger
@@ -85,6 +87,8 @@ CREATE TABLE auth_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   refresh_token_hash TEXT NOT NULL UNIQUE,
+  device_fingerprint TEXT,
+  is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
   user_agent TEXT,
   ip_address INET,
   expires_at TIMESTAMPTZ NOT NULL,
@@ -94,6 +98,7 @@ CREATE TABLE auth_sessions (
 
 CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id);
 CREATE INDEX idx_auth_sessions_expires ON auth_sessions(expires_at);
+CREATE INDEX idx_auth_sessions_suspicious ON auth_sessions(is_suspicious) WHERE is_suspicious = TRUE;
 
 -- =========================
 -- Profiles
@@ -121,12 +126,15 @@ CREATE TABLE business_profiles (
   cover_image_url TEXT,
   logo_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_business_profiles_industry ON business_profiles(industry);
 CREATE INDEX idx_business_profiles_stage ON business_profiles(stage);
 CREATE INDEX idx_business_profiles_location ON business_profiles(country, city);
+CREATE INDEX idx_business_profiles_desc_fts
+  ON business_profiles USING GIN (to_tsvector('english', coalesce(description, '') || ' ' || coalesce(company_name, '')));
 
 CREATE TABLE business_profile_skills (
   profile_id UUID NOT NULL REFERENCES business_profiles(id) ON DELETE CASCADE,
@@ -207,6 +215,7 @@ CREATE TABLE message_reads (
   read_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (message_id, user_id)
 );
+CREATE INDEX idx_message_reads_user ON message_reads(user_id, read_at DESC);
 
 -- =========================
 -- Posts + feed
@@ -233,6 +242,8 @@ CREATE TABLE posts (
 CREATE INDEX idx_posts_created ON posts(created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_posts_user_created ON posts(user_id, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_posts_type_created ON posts(type, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_posts_visibility_created ON posts(visibility, created_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_posts_content_fts ON posts USING GIN (to_tsvector('english', coalesce(content, '')));
 
 CREATE TABLE post_media (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -269,6 +280,29 @@ CREATE TABLE post_comments (
 );
 
 CREATE INDEX idx_post_comments_post_created ON post_comments(post_id, created_at DESC);
+
+CREATE TABLE post_content_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  edited_by UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_post_content_versions_post_created ON post_content_versions(post_id, created_at DESC);
+
+CREATE TABLE post_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  details TEXT,
+  status moderation_status NOT NULL DEFAULT 'pending',
+  reviewed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (post_id, reporter_id)
+);
+CREATE INDEX idx_post_reports_status_created ON post_reports(status, created_at DESC);
 
 CREATE TABLE post_bookmarks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -520,11 +554,32 @@ CREATE TABLE marketing_campaigns (
   clicks BIGINT NOT NULL DEFAULT 0,
   conversions BIGINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_marketing_campaigns_user_created ON marketing_campaigns(user_id, created_at DESC);
 CREATE INDEX idx_marketing_campaigns_status_dates ON marketing_campaigns(status, start_at, end_at);
+
+-- =========================
+-- Outbox (CDC/event publishing)
+-- =========================
+
+CREATE TABLE outbox_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aggregate_type TEXT NOT NULL,
+  aggregate_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  headers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  published_at TIMESTAMPTZ,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  error_message TEXT
+);
+
+CREATE INDEX idx_outbox_unpublished ON outbox_events(published_at, occurred_at) WHERE published_at IS NULL;
+CREATE INDEX idx_outbox_aggregate ON outbox_events(aggregate_type, aggregate_id, occurred_at DESC);
 
 CREATE TABLE marketing_campaign_target_industries (
   campaign_id UUID NOT NULL REFERENCES marketing_campaigns(id) ON DELETE CASCADE,

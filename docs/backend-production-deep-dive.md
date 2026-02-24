@@ -164,6 +164,21 @@ It includes:
 - Cursor-based pagination for feed/messages.
 - Idempotency keys on write endpoints that trigger money or side effects.
 - Versioned routes: `/api/v1/...`.
+- Shared API contract source of truth:
+  - publish `OpenAPI` from backend
+  - validate request/response payloads with `Zod`
+  - generate frontend DTO/client types from one contract to avoid drift
+
+### 5.1.1 Contract and error envelope standard
+
+- Standard API response envelope:
+  - `data`
+  - `error` (machine code + message + details)
+  - `meta` (request id, pagination cursor if applicable)
+- Enumerations must be mirrored 1:1:
+  - SQL enums -> backend zod schemas -> generated frontend types
+- Contract testing:
+  - add consumer/provider contract tests in CI for critical flows (auth, feed, payments, messaging)
 
 ## 5.2 Key endpoint groups
 
@@ -235,6 +250,44 @@ It includes:
   - `calendar_integrations` stores provider connection state and sync metadata.
   - `calendar_events` stores normalized events for in-app calendar rendering.
 
+## 5.4 Real-time messaging protocol detail
+
+- Transport:
+  - use native WebSocket gateway in API layer (or Socket.IO if fallback transport support is required)
+  - message persistence remains server-side in PostgreSQL
+  - fanout/pub-sub via NATS for horizontally scaled API instances
+- Channel model:
+  - 1:1 conversations: room key = `conversation:{id}`
+  - group conversations (phase 2+): room key = `group:{id}`
+- Event contract (examples):
+  - `message.created`
+  - `message.delivered`
+  - `message.read`
+  - `typing.started`
+  - `typing.stopped`
+  - `presence.updated`
+- Presence/typing:
+  - keep ephemeral state in Valkey with short TTL
+  - never persist typing indicators to primary DB
+- Reliability:
+  - client ack + retry token per outbound message
+  - server idempotency key to avoid duplicate inserts on reconnect
+
+## 5.5 Frontend API layer pattern (replace mock services cleanly)
+
+- Create a dedicated `src/api/` boundary:
+  - `http.ts` wrapper:
+    - base URL resolution
+    - auth header injection
+    - refresh-on-401 flow
+    - timeout/retry policy
+    - request-id propagation
+  - domain clients:
+    - `auth.ts`, `posts.ts`, `connections.ts`, `messages.ts`, `marketplace.ts`, `investments.ts`, `calendar.ts`
+  - boundary parsing:
+    - validate incoming responses with zod before data enters app state
+- Keep existing `src/services/profileService.ts` only as temporary adapter while migrating.
+
 ## 6) Performance and Scalability Strategy
 
 ## 6.0 Feed/search algorithms (what will run at scale)
@@ -304,6 +357,21 @@ It includes:
 - Message send ack p95 < 150 ms.
 - API availability >= 99.9%.
 - Payment webhook processing completion < 60 s.
+
+## 6.4 Rate limiting policy (initial tiers)
+
+| Endpoint | Anonymous | Authenticated | Trusted/Premium |
+|---|---:|---:|---:|
+| `GET /posts` (feed) | 20/min | 120/min | 300/min |
+| `POST /posts` | 0 | 10/min | 30/min |
+| `POST /posts/:id/comments` | 0 | 30/min | 80/min |
+| `POST /conversations/:id/messages` | 0 | 60/min | 200/min |
+| `POST /orders` | 0 | 10/min | 30/min |
+| `POST /payments/*` | 0 | 20/min | 60/min |
+
+Notes:
+- implement in Valkey/Redis with per-IP and per-user keys.
+- tighter limits for new/unverified accounts; progressive unlock via trust signals.
 
 ## 7) Global Financial Transactions
 
@@ -488,6 +556,7 @@ Add tables in a future migration (not in current SQL yet):
 - Parameterized queries only, no dynamic SQL without strict whitelists.
 - CSRF protection for cookie-based auth flows.
 - Secret rotation and environment-scoped keys.
+- POPIA-compliant data processing and consent logging for South African users.
 
 ## 9.3 Payment/webhook hardening
 
@@ -520,6 +589,21 @@ Add tables in a future migration (not in current SQL yet):
   - elevated error rates
   - failed migrations
 
+## 10.3 Testing strategy
+
+- API and contract tests:
+  - unit + integration tests per domain service
+  - contract tests for frontend/backend payload alignment
+- Load testing:
+  - k6/Artillery scenarios for feed read bursts, chat fanout, webhook spikes
+  - include DB and cache saturation thresholds in acceptance criteria
+- Payment testing:
+  - sandbox suites for Stripe/PayPal/SA gateways
+  - idempotency and webhook replay tests are mandatory
+- Chaos/resilience:
+  - provider outage simulation (payment and calendar providers)
+  - queue lag/recovery drills
+
 ## 11) Migration Plan: Mock Data to Production
 
 ## Phase 1 (Foundation, 2-4 weeks)
@@ -527,6 +611,11 @@ Add tables in a future migration (not in current SQL yet):
 - Stand up API service + PostgreSQL + Valkey/Redis.
 - Implement auth, profiles, basic feed reads/writes.
 - Replace `AuthContext` localStorage auth with real API tokens/sessions.
+- Add feature flags for controlled mock->real rollout:
+  - `use_real_auth`
+  - `use_real_feed`
+  - `use_real_messages`
+  - `use_real_payments`
 
 ## Phase 2 (Core social, 3-5 weeks)
 
@@ -545,6 +634,24 @@ Add tables in a future migration (not in current SQL yet):
 - Multi-provider payment integration (Stripe + PayPal + SA gateways) with routing and reconciliation.
 - Ledger activation and reconciliation jobs.
 - Security hardening, SLO-based performance tuning, load testing.
+
+### Migration safety controls
+
+- Rollback-ready client behavior:
+  - if real API path fails, allow controlled fallback to read-only mode instead of hard outage
+- Local-to-server migration:
+  - one-time import jobs for essential user settings/bookmarks when moving from local-only state
+- Backend rollout:
+  - canary deploy + feature flags + fast rollback
+
+## 11.1 South Africa compliance checkpoints
+
+- POPIA:
+  - lawful processing basis, data minimization, consent logs, and deletion/access request workflows
+- FICA:
+  - if investment/payment flows trigger accountable-institution obligations, implement KYC/KYB and recordkeeping controls
+- SARB/FX controls:
+  - cross-border settlement and remittance paths require provider/legal validation before launch
 
 ## 12) Load and Capacity Approach
 
@@ -568,6 +675,8 @@ Add tables in a future migration (not in current SQL yet):
 - Audit trail is append-only and partitioned from day one.
 - Authentication supports email/password and social login (Google/Facebook/LinkedIn) with account linking.
 - Verification is a first-class trust system (identity, business, payment, behavior).
+- Connection deduplication is enforced at DB level using canonical pair uniqueness.
+- Search/readiness includes PostgreSQL FTS indexes now; OpenSearch remains scale-up path.
 
 ## 14) Recommended rollout path (best value without breaking the bank)
 
@@ -630,11 +739,21 @@ Why this is the best balance:
   - retain media model support for `image|video`
   - keep API fields stable so clients do not break when video is later enabled
 
+### 14.3 Repo and delivery hygiene quick wins
+
+- Replace default Vite README with Vendrome-specific runbook and architecture notes.
+- Rename package from `my-app` to `vendrome-web` for CI/telemetry clarity.
+- Add `.env.example` documenting required frontend variables:
+  - `VITE_API_BASE_URL`
+  - OAuth client IDs (Google/Facebook/LinkedIn)
+  - calendar integration keys
+  - feature-flag defaults
+
 ## 15) Cost Model (monthly)
 
 These are planning estimates, not invoices. Prices vary by region, tax, contract terms, and volume discounts.
 
-### 14.1 Assumptions used for cost tables
+### 15.1 Assumptions used for cost tables
 
 - All values are monthly.
 - Media-heavy social app with photos + short videos.
@@ -643,7 +762,7 @@ These are planning estimates, not invoices. Prices vary by region, tax, contract
   - payment fee examples in ZAR
 - Local payment fees listed are generally ex-VAT (provider billing terms apply).
 
-### 14.2 Core platform and infrastructure cost ranges (USD/month)
+### 15.2 Core platform and infrastructure cost ranges (USD/month)
 
 | Cost item | Lean MVP (5k MAU) | Growth (50k MAU) | Scale (250k+ MAU) | Notes |
 |---|---:|---:|---:|---|
@@ -657,7 +776,7 @@ These are planning estimates, not invoices. Prices vary by region, tax, contract
 | CI/CD and artifact storage | 10-120 | 50-500 | 300-2,000 | Build minutes + artifact retention |
 | **Estimated subtotal** | **280-1,470** | **1,770-10,900** | **13,600-79,000** | Excludes payment processing and media delivery |
 
-### 14.3 Media storage + delivery (photos and videos)
+### 15.3 Media storage + delivery (photos and videos)
 
 #### Photo and object media (Cloudflare R2 style model)
 
@@ -690,7 +809,7 @@ Practical note:
 - Video delivery often becomes one of the largest costs in social apps.
 - To reduce cost, keep multiple quality profiles but aggressively manage retention, autoplay behavior, and cold-archive strategy for older videos.
 
-### 14.4 Transaction processing cost examples (ZAR)
+### 15.4 Transaction processing cost examples (ZAR)
 
 Example assumptions:
 - Monthly GMV: `R1,000,000`
@@ -710,7 +829,7 @@ Important:
 - Real effective fee depends on method mix (cards vs EFT vs BNPL), refunds, disputes/chargebacks, and payout fees.
 - For South Africa, routing more eligible traffic to EFT rails can reduce blended cost.
 
-### 14.5 Full monthly run-rate examples (including media, excluding payment fees)
+### 15.5 Full monthly run-rate examples (including media, excluding payment fees)
 
 | Scenario | Infra/platform subtotal | Media subtotal (photo + video example) | Estimated total before payment fees |
 |---|---:|---:|---:|
@@ -718,7 +837,7 @@ Important:
 | Growth | $1,770 - $10,900 | ~$1,500 - $6,000 | **$3,270 - $16,900** |
 | Scale | $13,600 - $79,000 | ~$8,000 - $60,000 | **$21,600 - $139,000** |
 
-### 14.6 Cost-control levers (highest impact first)
+### 15.6 Cost-control levers (highest impact first)
 
 - Media:
   - Cap max video duration/bitrate by user tier.
@@ -811,6 +930,11 @@ Why this order:
 - Google AdSense revenue share: https://support.google.com/adsense/answer/180195
 - Kickstarter fees: https://help.kickstarter.com/hc/en-us/articles/115005028634-What-are-the-fees
 - Indiegogo fees and pricing: https://support.indiegogo.com/hc/en-us/articles/205138007-Fees-Pricing-for-Campaigners-How-much-does-Indiegogo-cost
+- OpenAPI specification: https://spec.openapis.org/oas/latest.html
+- Zod documentation: https://zod.dev/
+- k6 load testing docs: https://grafana.com/docs/k6/latest/
+- Artillery docs: https://www.artillery.io/docs
+- Pact contract testing docs: https://docs.pact.io/
 - Fastify benchmark page: https://fastify.dev/benchmarks/
 - Node.js release and LTS guidance: https://nodejs.org/en/about/releases
 - Valkey project overview: https://valkey.io/
@@ -820,6 +944,9 @@ Why this order:
 - Google Identity OAuth docs: https://developers.google.com/identity/protocols/oauth2
 - Facebook Login docs: https://developers.facebook.com/docs/facebook-login/
 - LinkedIn Sign In docs: https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/sign-in-with-linkedin
+- POPIA overview (South Africa): https://www.justice.gov.za/inforeg/
+- FIC Act / FICA information: https://www.fic.gov.za/compliance-and-prevention/legislation/
+- South African Reserve Bank (cross-border/exchange control): https://www.resbank.co.za/
 - MinIO repository/license: https://github.com/minio/minio
 - OpenTelemetry overview: https://opentelemetry.io/docs/what-is-opentelemetry/
 - PostgreSQL partitioning docs: https://www.postgresql.org/docs/current/ddl-partitioning.html
