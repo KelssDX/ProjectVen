@@ -36,6 +36,10 @@ It is aligned to the current codebase behavior and data shapes, and includes a p
   - `src/context/BookmarkContext.tsx`
 - Profile service is in-memory mock:
   - `src/services/profileService.ts`
+- Current frontend contract mismatches to fix during backend wiring:
+  - `src/types/index.ts` `UserType` is missing `'admin'` while SQL `user_type` includes it.
+  - `src/App.tsx` wraps `EngagementProvider` outside `AuthProvider`, which prevents auth-aware engagement state.
+  - `src/pages/feed/SocialFeed.tsx` maintains local engagement flags/counters instead of using shared context/API state.
 
 ### 2.2 Feature modules already implemented in UI
 
@@ -125,8 +129,8 @@ It is aligned to the current codebase behavior and data shapes, and includes a p
 
 - Identity Service: user accounts, auth, MFA, session/token lifecycle.
 - Profile Service: business profiles, skills, achievements, visibility.
-- Social Service: posts, media refs, comments, reactions, shares, bookmarks.
-- Graph Service: connections and relationship state.
+- Social Service: posts, media refs, comments, reactions, reposts, shares, bookmarks, topics.
+- Graph Service: connections, follows, and relationship state.
 - Messaging Service: conversations/messages/read-state.
 - Commerce Service: products/services/orders/bookings/reviews.
 - Investment Service: campaigns, commitments, statuses, docs.
@@ -154,6 +158,28 @@ It includes:
 - Payments + double-entry ledger.
 - Notifications.
 - Partitioned audit table (`audit_events`) for long-term scale.
+
+### 4.1 Schema hardening now included (current SQL revision)
+
+- Social/auth model completeness:
+  - `user_oauth_identities` for multi-provider account linking.
+  - `users.phone_number` + `users.phone_verified` for trust and MFA flows.
+  - `user_follows`, `topics`, `post_topics`, and `user_topic_follows` for graph/topic ranking signals.
+- Feed interaction correctness:
+  - dedicated `post_reposts` table (reposts are modeled as content edges, not reactions).
+  - threaded comments via `post_comments.parent_comment_id`.
+  - generalized `bookmarks` table supporting `post|profile|article|resource|opportunity` plus category/tag metadata.
+- Calendar reliability:
+  - `calendar_integrations` token storage and sync metadata (`access_token_encrypted`, `refresh_token_encrypted`, `token_expires_at`, `scope`, `sync_cursor`).
+  - `calendar_events.external_event_id`, `recurrence_rule`, `integration_id`.
+  - unique index for idempotent upserts by `(user_id, source, external_event_id)` when external id is present.
+- Financial/audit consistency:
+  - immutable fee split columns on `orders`/`bookings` (`platform_fee_amount`, `seller_payout_amount`).
+  - `marketing_campaigns.spent_amount` for pacing.
+  - `investment_campaigns.equity` to preserve campaign-level terms.
+  - `payment_transactions.source_type` CHECK constraint.
+- Crowdfunding correctness:
+  - `post_crowdfunding.ends_at` replaces static `days_left`; remaining days are derived at read time.
 
 ## 5) API Design (v1)
 
@@ -196,8 +222,13 @@ It includes:
   - `GET /posts`
   - `POST /posts`
   - `POST /posts/:id/reactions`
+  - `POST /posts/:id/reposts`
   - `POST /posts/:id/comments`
-  - `POST /posts/:id/bookmarks`
+  - `POST /posts/:id/bookmarks` (post shortcut)
+  - `GET /bookmarks`
+  - `POST /bookmarks`
+  - `GET /topics`
+  - `POST /topics/:id/follow`
 - Graph/Messaging:
   - `POST /connections/requests`
   - `POST /connections/:id/accept`
@@ -243,12 +274,12 @@ It includes:
     - if updated on provider later than local and no local unsynced changes, accept provider.
     - if both changed, mark as conflict and queue user-visible resolution.
 - Reliability controls:
-  - idempotent upserts by `(provider, external_event_id, user_id)`.
+  - idempotent upserts by `(user_id, source, external_event_id)`.
   - dead-letter queue for failed sync jobs.
   - token refresh retry policy and reconnect workflow.
 - DB alignment:
-  - `calendar_integrations` stores provider connection state and sync metadata.
-  - `calendar_events` stores normalized events for in-app calendar rendering.
+  - `calendar_integrations` stores provider connection state, encrypted tokens, and sync cursors/metadata.
+  - `calendar_events` stores normalized events, `external_event_id`, and optional recurrence rule for provider parity.
 
 ## 5.4 Real-time messaging protocol detail
 
@@ -283,7 +314,7 @@ It includes:
     - timeout/retry policy
     - request-id propagation
   - domain clients:
-    - `auth.ts`, `posts.ts`, `connections.ts`, `messages.ts`, `marketplace.ts`, `investments.ts`, `calendar.ts`
+    - `auth.ts`, `posts.ts`, `bookmarks.ts`, `topics.ts`, `connections.ts`, `messages.ts`, `marketplace.ts`, `investments.ts`, `calendar.ts`
   - boundary parsing:
     - validate incoming responses with zod before data enters app state
 - Keep existing `src/services/profileService.ts` only as temporary adapter while migrating.
@@ -295,11 +326,11 @@ It includes:
 - Feed ranking v1 (hybrid deterministic + score-based):
   - base recency score (time decay)
   - relationship strength score (accepted connections, message/interaction history)
-  - engagement score (likes/comments/reposts/interests normalized by post age)
+  - engagement score (likes/comments/reposts/interests normalized by post age; reposts sourced from `post_reposts`)
   - interest affinity (user interaction history by post type/tag/category)
   - quality/safety score modifiers (verified actors, policy moderation flags)
 - Feed candidate generation:
-  - candidate pool from network graph + followed topics + trending set
+  - candidate pool from network graph (`connections` + `user_follows`) + followed topics (`user_topic_follows`) + trending set
   - dedupe and diversity constraints (avoid repetitive author/topic clustering)
   - return cursor-based pages for stable infinite scroll
 - Feed serving latency path:
@@ -381,6 +412,7 @@ Notes:
 - Primary global providers:
   - Stripe
   - PayPal
+  - Airwallex (global collections, multi-currency walleting, cross-border payouts where entity coverage fits)
 - South Africa-focused providers:
   - Yoco
   - Peach Payments
@@ -405,9 +437,11 @@ Notes:
     - EFT/open-banking/pay-by-bank: Payfast/Ozow path.
   - Non-SA/global:
     - Stripe and PayPal as primary checkout options.
+    - Airwallex path for cross-border payout-heavy merchants and multi-currency settlement flows.
 - Keep provider adapters isolated:
   - `providers/stripe/*`
   - `providers/paypal/*`
+  - `providers/airwallex/*`
   - `providers/yoco/*`
   - `providers/peach/*`
   - `providers/payfast/*`
@@ -421,6 +455,7 @@ Notes:
 - Daily reconciliation job:
   - compare provider payouts/charges vs internal ledger deltas.
 - Do not trust client amounts; compute server-side totals from canonical catalog/order rows.
+- Persist immutable fee split values (`platform_fee_amount`, `seller_payout_amount`) on `orders`/`bookings` at confirmation time and use those values as ledger posting inputs.
 
 ## 7.4 Webhooks and settlement model
 
@@ -467,9 +502,11 @@ Notes:
   - Facebook Login
   - LinkedIn OAuth
 - Account linking model:
-  - one `users` record with multiple linked identities (`provider`, `provider_user_id`)
+  - one `users` record with multiple linked identities (`user_oauth_identities`: `provider`, `provider_user_id`)
   - verified email merge rules to prevent duplicate-account sprawl
   - step-up verification when social provider email is missing/unverified
+- Phone trust signal:
+  - `users.phone_number` + `users.phone_verified` support phone-based verification and risk scoring.
 
 ## 9.4 Verification features (user, business, marketplace trust)
 
@@ -619,7 +656,7 @@ Add tables in a future migration (not in current SQL yet):
 
 ## Phase 2 (Core social, 3-5 weeks)
 
-- Connections, messaging, reactions/comments/bookmarks.
+- Connections, follows, messaging, reactions/reposts/comments/bookmarks/topics.
 - Real pagination/cursors; remove in-memory feed mutations.
 - Add audit events for social and auth.
 
@@ -631,7 +668,7 @@ Add tables in a future migration (not in current SQL yet):
 
 ## Phase 4 (Payments + hardening, 4-8 weeks)
 
-- Multi-provider payment integration (Stripe + PayPal + SA gateways) with routing and reconciliation.
+- Multi-provider payment integration (Stripe + PayPal + Airwallex + SA gateways) with routing and reconciliation.
 - Ledger activation and reconciliation jobs.
 - Security hardening, SLO-based performance tuning, load testing.
 
@@ -671,12 +708,14 @@ Add tables in a future migration (not in current SQL yet):
 - PostgreSQL is canonical state store.
 - Valkey/Redis is required for latency and rate control.
 - Event-driven async processing is mandatory for reliability and throughput.
-- Payments are multi-provider (Stripe + PayPal + SA gateways), idempotent, and reconciled against internal ledger.
+- Payments are multi-provider (Stripe + PayPal + Airwallex + SA gateways), idempotent, and reconciled against internal ledger.
 - Audit trail is append-only and partitioned from day one.
 - Authentication supports email/password and social login (Google/Facebook/LinkedIn) with account linking.
 - Verification is a first-class trust system (identity, business, payment, behavior).
 - Connection deduplication is enforced at DB level using canonical pair uniqueness.
 - Search/readiness includes PostgreSQL FTS indexes now; OpenSearch remains scale-up path.
+- Feed graph/topic signals are first-class in schema (`user_follows`, `topics`, `post_topics`, `user_topic_follows`).
+- Reposts are modeled as explicit entities (`post_reposts`) instead of reaction overloading.
 
 ## 14) Recommended rollout path (best value without breaking the bank)
 
@@ -697,7 +736,7 @@ Recommended default approach:
   - Add OpenSearch when query volume/index size justifies it.
 - Payments:
   - Start with two rails:
-    - one global (Stripe or PayPal path)
+    - one global (Stripe or PayPal or Airwallex path)
     - one strong SA local path (Yoco or Peach/Payfast based on method mix)
   - Expand routing matrix after 60-90 days of payment analytics.
 - Media/video strategy:
@@ -824,10 +863,12 @@ Example assumptions:
 | Payfast (cards) | 3.2% + R2 | `~R36,000` |
 | Payfast (Instant EFT) | 2.0% (min applies) | `~R20,000` (before minimum edge cases) |
 | PayPal ZA merchant (regional table) | 4.9% + fixed fee | `~R49,000 + fixed-fee component` |
+| Airwallex (global PSP path) | Region/entity-specific pricing + FX/settlement components | Run routing simulation by entity/currency/method; not a single SA flat rate |
 
 Important:
 - Real effective fee depends on method mix (cards vs EFT vs BNPL), refunds, disputes/chargebacks, and payout fees.
 - For South Africa, routing more eligible traffic to EFT rails can reduce blended cost.
+- Airwallex pricing/availability is merchant-entity and region dependent; include it in routing tests for cross-border corridors, not as a fixed SA-only rate assumption.
 
 ### 15.5 Full monthly run-rate examples (including media, excluding payment fees)
 
@@ -957,6 +998,8 @@ Why this order:
 - PayPal Checkout docs: https://developer.paypal.com/docs/checkout/
 - PayPal merchant fees (South Africa table): https://www.paypal.com/za/business/paypal-business-fees
 - PayPal Payouts API docs: https://developer.paypal.com/docs/payouts/standard/integrate-api/
+- Airwallex API docs: https://www.airwallex.com/docs/
+- Airwallex pricing pages (region-specific): https://www.airwallex.com/pricing
 - Yoco Developer Hub: https://developer.yoco.com/
 - Yoco Checkout API reference: https://developer.yoco.com/api-reference/checkout-api
 - Yoco online payments webhook guidance: https://developer.yoco.com/guides/online-payments

@@ -12,6 +12,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- =========================
 
 CREATE TYPE user_type AS ENUM ('sme', 'entrepreneur', 'investor', 'mentor', 'admin');
+CREATE TYPE oauth_provider AS ENUM ('google', 'facebook', 'linkedin');
 CREATE TYPE verification_level AS ENUM ('basic', 'verified', 'trusted');
 CREATE TYPE connection_status AS ENUM ('pending', 'accepted', 'rejected', 'blocked');
 CREATE TYPE post_visibility AS ENUM ('public', 'connections', 'private');
@@ -26,7 +27,7 @@ CREATE TYPE post_type AS ENUM (
   'promo'
 );
 CREATE TYPE media_type AS ENUM ('image', 'video', 'document');
-CREATE TYPE reaction_type AS ENUM ('like', 'love', 'interest', 'share', 'repost');
+CREATE TYPE reaction_type AS ENUM ('like', 'love', 'interest', 'share');
 CREATE TYPE order_type AS ENUM ('product', 'service');
 CREATE TYPE order_status AS ENUM ('pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'refunded');
 CREATE TYPE booking_status AS ENUM ('pending', 'confirmed', 'completed', 'cancelled');
@@ -41,6 +42,17 @@ CREATE TYPE ledger_entry_type AS ENUM ('debit', 'credit');
 CREATE TYPE notification_type AS ENUM ('system', 'message', 'connection', 'payment', 'marketing', 'security');
 CREATE TYPE audit_actor_type AS ENUM ('user', 'service', 'admin');
 CREATE TYPE moderation_status AS ENUM ('pending', 'under_review', 'actioned', 'dismissed');
+CREATE TYPE bookmark_type AS ENUM ('post', 'profile', 'article', 'resource', 'opportunity');
+CREATE TYPE bookmark_category AS ENUM (
+  'business',
+  'networking',
+  'investment',
+  'mentorship',
+  'marketing',
+  'news',
+  'resources',
+  'inspiration'
+);
 
 -- =========================
 -- Utility trigger
@@ -62,6 +74,8 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email CITEXT NOT NULL UNIQUE,
   password_hash TEXT,
+  phone_number TEXT CHECK (phone_number IS NULL OR phone_number ~ '^\+[1-9][0-9]{7,14}$'),
+  phone_verified BOOLEAN NOT NULL DEFAULT FALSE,
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   user_type user_type NOT NULL,
@@ -130,6 +144,25 @@ CREATE TABLE business_profiles (
   deleted_at TIMESTAMPTZ
 );
 
+CREATE UNIQUE INDEX uniq_users_phone_number
+  ON users(phone_number)
+  WHERE phone_number IS NOT NULL;
+
+CREATE TABLE user_oauth_identities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider oauth_provider NOT NULL,
+  provider_user_id TEXT NOT NULL,
+  provider_email CITEXT,
+  provider_email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  linked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ,
+  UNIQUE (user_id, provider),
+  UNIQUE (provider, provider_user_id)
+);
+
+CREATE INDEX idx_user_oauth_identities_user ON user_oauth_identities(user_id);
+
 CREATE INDEX idx_business_profiles_industry ON business_profiles(industry);
 CREATE INDEX idx_business_profiles_stage ON business_profiles(stage);
 CREATE INDEX idx_business_profiles_location ON business_profiles(country, city);
@@ -182,6 +215,17 @@ CREATE UNIQUE INDEX uniq_connection_pair
   ON connections (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
 CREATE INDEX idx_connections_requester ON connections(requester_id, status);
 CREATE INDEX idx_connections_addressee ON connections(addressee_id, status);
+
+CREATE TABLE user_follows (
+  follower_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  followed_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (follower_user_id, followed_user_id),
+  CONSTRAINT chk_user_follows_different CHECK (follower_user_id <> followed_user_id)
+);
+
+CREATE INDEX idx_user_follows_followed_created
+  ON user_follows(followed_user_id, created_at DESC);
 
 CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -245,6 +289,34 @@ CREATE INDEX idx_posts_type_created ON posts(type, created_at DESC) WHERE delete
 CREATE INDEX idx_posts_visibility_created ON posts(visibility, created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_posts_content_fts ON posts USING GIN (to_tsvector('english', coalesce(content, '')));
 
+CREATE TABLE topics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug CITEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE post_topics (
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  topic_id UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (post_id, topic_id)
+);
+
+CREATE INDEX idx_post_topics_topic_created
+  ON post_topics(topic_id, created_at DESC);
+
+CREATE TABLE user_topic_follows (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  topic_id UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, topic_id)
+);
+
+CREATE INDEX idx_user_topic_follows_topic_created
+  ON user_topic_follows(topic_id, created_at DESC);
+
 CREATE TABLE post_media (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
@@ -268,18 +340,34 @@ CREATE TABLE post_reactions (
 CREATE INDEX idx_post_reactions_post ON post_reactions(post_id);
 CREATE INDEX idx_post_reactions_user ON post_reactions(user_id);
 
+CREATE TABLE post_reposts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  original_post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  repost_post_id UUID NOT NULL UNIQUE REFERENCES posts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_post_reposts_not_self CHECK (original_post_id <> repost_post_id),
+  UNIQUE (original_post_id, user_id)
+);
+
+CREATE INDEX idx_post_reposts_original_created ON post_reposts(original_post_id, created_at DESC);
+CREATE INDEX idx_post_reposts_user_created ON post_reposts(user_id, created_at DESC);
+
 CREATE TABLE post_comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  parent_comment_id UUID REFERENCES post_comments(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
   likes_count BIGINT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT chk_post_comments_parent_not_self CHECK (parent_comment_id IS NULL OR parent_comment_id <> id)
 );
 
 CREATE INDEX idx_post_comments_post_created ON post_comments(post_id, created_at DESC);
+CREATE INDEX idx_post_comments_parent_created ON post_comments(parent_comment_id, created_at DESC);
 
 CREATE TABLE post_content_versions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -304,15 +392,32 @@ CREATE TABLE post_reports (
 );
 CREATE INDEX idx_post_reports_status_created ON post_reports(status, created_at DESC);
 
-CREATE TABLE post_bookmarks (
+CREATE TABLE bookmarks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type bookmark_type NOT NULL,
+  source_id TEXT,
+  post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
+  profile_id UUID REFERENCES business_profiles(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  url TEXT,
+  category bookmark_category NOT NULL,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  image_url TEXT,
+  author_name TEXT,
+  author_avatar_url TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (post_id, user_id)
+  saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_bookmark_internal_ref_count
+    CHECK (((post_id IS NOT NULL)::INTEGER + (profile_id IS NOT NULL)::INTEGER) <= 1)
 );
 
-CREATE INDEX idx_post_bookmarks_user_created ON post_bookmarks(user_id, created_at DESC);
+CREATE UNIQUE INDEX uniq_bookmarks_user_type_source
+  ON bookmarks(user_id, type, source_id)
+  WHERE source_id IS NOT NULL;
+CREATE INDEX idx_bookmarks_user_saved ON bookmarks(user_id, saved_at DESC);
+CREATE INDEX idx_bookmarks_category_saved ON bookmarks(category, saved_at DESC);
 
 CREATE TABLE post_shares (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -352,7 +457,7 @@ CREATE TABLE post_crowdfunding (
   target_amount NUMERIC(18,2) NOT NULL,
   raised_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
   backers_count INTEGER NOT NULL DEFAULT 0,
-  days_left INTEGER NOT NULL,
+  ends_at TIMESTAMPTZ NOT NULL,
   min_investment NUMERIC(18,2) NOT NULL,
   max_investment NUMERIC(18,2),
   currency CHAR(3) NOT NULL,
@@ -449,10 +554,13 @@ CREATE TABLE orders (
   order_type order_type NOT NULL,
   status order_status NOT NULL DEFAULT 'pending',
   total_amount NUMERIC(18,2) NOT NULL,
+  platform_fee_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (platform_fee_amount >= 0),
+  seller_payout_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (seller_payout_amount >= 0),
   currency CHAR(3) NOT NULL,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_orders_fee_split CHECK ((platform_fee_amount + seller_payout_amount) <= total_amount)
 );
 
 CREATE INDEX idx_orders_buyer_created ON orders(buyer_id, created_at DESC);
@@ -477,10 +585,13 @@ CREATE TABLE bookings (
   start_at TIMESTAMPTZ NOT NULL,
   end_at TIMESTAMPTZ,
   price NUMERIC(18,2) NOT NULL,
+  platform_fee_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (platform_fee_amount >= 0),
+  seller_payout_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (seller_payout_amount >= 0),
   currency CHAR(3) NOT NULL,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_bookings_fee_split CHECK ((platform_fee_amount + seller_payout_amount) <= price)
 );
 
 CREATE INDEX idx_bookings_client_start ON bookings(client_id, start_at DESC);
@@ -514,6 +625,7 @@ CREATE TABLE investment_campaigns (
   raised_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
   min_investment NUMERIC(18,2) NOT NULL,
   max_investment NUMERIC(18,2),
+  equity TEXT,
   status campaign_status NOT NULL DEFAULT 'draft',
   starts_at TIMESTAMPTZ,
   ends_at TIMESTAMPTZ,
@@ -547,6 +659,7 @@ CREATE TABLE marketing_campaigns (
   name TEXT NOT NULL,
   campaign_type campaign_type NOT NULL,
   budget NUMERIC(18,2) NOT NULL CHECK (budget >= 0),
+  spent_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (spent_amount >= 0),
   status campaign_status NOT NULL DEFAULT 'draft',
   start_at TIMESTAMPTZ NOT NULL,
   end_at TIMESTAMPTZ NOT NULL,
@@ -631,6 +744,12 @@ CREATE TABLE calendar_integrations (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider calendar_source NOT NULL,
   external_account_id TEXT,
+  access_token_encrypted TEXT,
+  refresh_token_encrypted TEXT,
+  token_expires_at TIMESTAMPTZ,
+  scope TEXT,
+  sync_cursor TEXT,
+  provider_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   connected BOOLEAN NOT NULL DEFAULT FALSE,
   last_sync_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -641,13 +760,16 @@ CREATE TABLE calendar_integrations (
 CREATE TABLE calendar_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  integration_id UUID REFERENCES calendar_integrations(id) ON DELETE SET NULL,
   source calendar_source NOT NULL DEFAULT 'vendrom',
+  external_event_id TEXT,
   event_type calendar_event_type NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
   location TEXT,
   start_at TIMESTAMPTZ NOT NULL,
   end_at TIMESTAMPTZ,
+  recurrence_rule TEXT,
   meeting_mode meeting_mode,
   meeting_link TEXT,
   source_link TEXT,
@@ -657,6 +779,10 @@ CREATE TABLE calendar_events (
 
 CREATE INDEX idx_calendar_events_user_start ON calendar_events(user_id, start_at);
 CREATE INDEX idx_calendar_events_type_start ON calendar_events(event_type, start_at);
+CREATE INDEX idx_calendar_events_integration_start ON calendar_events(integration_id, start_at);
+CREATE UNIQUE INDEX uniq_calendar_events_provider_external_user
+  ON calendar_events(user_id, source, external_event_id)
+  WHERE external_event_id IS NOT NULL;
 
 -- =========================
 -- Payments + ledger
@@ -675,7 +801,9 @@ CREATE TABLE payment_transactions (
   source_id UUID NOT NULL,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT chk_payment_transactions_source_type
+    CHECK (source_type IN ('order', 'booking', 'investment', 'campaign', 'payout'))
 );
 
 CREATE INDEX idx_payment_transactions_user_created ON payment_transactions(user_id, created_at DESC);
