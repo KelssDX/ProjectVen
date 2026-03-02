@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -11,8 +11,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useBookmarks, type BookmarkCategory } from '@/context/BookmarkContext';
 import { useCalendarPanel } from '@/context/CalendarPanelContext';
 import { useEngagement } from '@/context/EngagementContext';
+import { postsApi, type PostCommentDto, type PostDto } from '@/api/posts';
 import { mockPosts, mockComments, postTypeConfig } from '@/data/mockPosts';
 import type { Post, PostType, Comment } from '@/types';
+import type { LucideIcon } from 'lucide-react';
 import {
   Heart,
   MessageCircle,
@@ -67,10 +69,65 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
+
+function mapApiPostToUi(post: PostDto): Post {
+  const media = post.media
+    .filter((item) => item.type === 'image' || item.type === 'video')
+    .map((item) => ({
+      type: item.type as 'image' | 'video',
+      url: item.url,
+    }));
+
+  return {
+    id: post.id,
+    userId: post.userId,
+    author: {
+      id: post.author.id,
+      name: post.author.name,
+      company: post.author.company,
+      avatar: post.author.avatar ?? undefined,
+      userType: post.author.userType,
+    },
+    type: post.type,
+    content: post.content,
+    media,
+    likes: post.likes,
+    loves: post.loves,
+    interests: post.interests,
+    bookmarks: post.bookmarks,
+    reposts: post.reposts,
+    comments: post.comments,
+    shares: post.shares,
+    createdAt: new Date(post.createdAt),
+    isLiked: post.isLiked ?? false,
+    isLoved: post.isLoved ?? false,
+    isInterested: post.isInterested ?? false,
+    isShared: post.isShared ?? false,
+    isReposted: post.isReposted ?? false,
+    isBookmarked: post.isBookmarked ?? false,
+  };
+}
+
+function mapApiCommentToUi(comment: PostCommentDto): Comment {
+  return {
+    id: comment.id,
+    postId: comment.postId,
+    userId: comment.userId,
+    content: comment.content,
+    likes: comment.likes,
+    createdAt: new Date(comment.createdAt),
+    author: {
+      name: comment.author.name,
+      avatar: comment.author.avatar ?? undefined,
+    },
+  };
+}
+
 const TheHub = () => {
   const { user } = useAuth();
-  const [posts, setPosts] = useState<Post[]>(mockPosts);
-  const [comments, setComments] = useState<Comment[]>(mockComments);
+  const [posts, setPosts] = useState<Post[]>(USE_REAL_FEED ? [] : mockPosts);
+  const [comments, setComments] = useState<Comment[]>(USE_REAL_FEED ? [] : mockComments);
   const [activeTab, setActiveTab] = useState<'my-feed' | 'explore' | 'search'>('explore');
   const [searchTab, setSearchTab] = useState('all');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
@@ -78,6 +135,8 @@ const TheHub = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isFeedLoading, setIsFeedLoading] = useState(USE_REAL_FEED);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const { openPanel } = useCalendarPanel();
   const {
     state: engagementState,
@@ -90,6 +149,65 @@ const TheHub = () => {
     toggleShare,
     toggleRepost,
   } = useEngagement();
+
+  useEffect(() => {
+    if (!USE_REAL_FEED) return;
+
+    let isCancelled = false;
+
+    const loadFeed = async () => {
+      setIsFeedLoading(true);
+      setFeedError(null);
+      try {
+        const { data } = await postsApi.getFeed({ limit: 30 });
+        if (isCancelled) return;
+        setPosts(data.items.map(mapApiPostToUi));
+      } catch (error) {
+        if (isCancelled) return;
+        console.error('Failed to load feed from API:', error);
+        setFeedError('Unable to load live feed. Showing fallback data.');
+        setPosts(mockPosts);
+        setComments(mockComments);
+      } finally {
+        if (!isCancelled) {
+          setIsFeedLoading(false);
+        }
+      }
+    };
+
+    void loadFeed();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!USE_REAL_FEED || !selectedPost) return;
+
+    let isCancelled = false;
+
+    const loadComments = async () => {
+      try {
+        const { data } = await postsApi.getComments(selectedPost.id, 100);
+        if (isCancelled) return;
+
+        const mapped = data.items.map(mapApiCommentToUi);
+        setComments((prev) => [
+          ...prev.filter((comment) => comment.postId !== selectedPost.id),
+          ...mapped,
+        ]);
+      } catch (error) {
+        console.error('Failed to load post comments:', error);
+      }
+    };
+
+    void loadComments();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedPost?.id]);
 
   const interestedIds = useMemo(
     () => new Set(engagementState.interested),
@@ -144,9 +262,34 @@ const TheHub = () => {
 
   const activeFeedPosts = activeTab === 'my-feed' ? followingPosts : explorePosts;
 
-  const handleLike = (postId: string) => {
+  const handleLike = async (postId: string) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleReaction({
+          postId,
+          reaction: 'like',
+        });
+
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  likes: data.counts.likes,
+                  isLiked: data.isActive,
+                }
+              : post,
+          ),
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to toggle like:', error);
+      }
+    }
+
     const wasLiked = isLiked(postId);
     toggleLike(postId);
+
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -156,9 +299,34 @@ const TheHub = () => {
     );
   };
 
-  const handleInterest = (postId: string) => {
+  const handleInterest = async (postId: string) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleReaction({
+          postId,
+          reaction: 'interest',
+        });
+
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  interests: data.counts.interests,
+                  isInterested: data.isActive,
+                }
+              : post,
+          ),
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to toggle interest:', error);
+      }
+    }
+
     const wasInterested = isInterested(postId);
     toggleInterest(postId);
+
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -171,7 +339,28 @@ const TheHub = () => {
     );
   };
 
-  const handleShare = (post: Post) => {
+  const handleShare = async (post: Post) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleShare(post.id);
+        setPosts((prev) =>
+          prev.map((item) =>
+            item.id === post.id
+              ? {
+                  ...item,
+                  shares: data.shares,
+                  isShared: data.isShared,
+                }
+              : item,
+          ),
+        );
+        setSharePost(post);
+        return;
+      } catch (error) {
+        console.error('Failed to toggle share:', error);
+      }
+    }
+
     const wasShared = isShared(post.id);
     toggleShare(post.id);
     setPosts((prev) =>
@@ -181,13 +370,33 @@ const TheHub = () => {
               ...item,
               shares: Math.max(0, item.shares + (wasShared ? -1 : 1)),
             }
-          : item
-      )
+          : item,
+      ),
     );
     setSharePost(post);
   };
 
-  const handleRepost = (postId: string) => {
+  const handleRepost = async (postId: string) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleRepost(postId);
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  reposts: data.reposts,
+                  isReposted: data.isReposted,
+                }
+              : post,
+          ),
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to toggle repost:', error);
+      }
+    }
+
     const wasReposted = isReposted(postId);
     toggleRepost(postId);
     setPosts((prev) =>
@@ -197,12 +406,32 @@ const TheHub = () => {
               ...post,
               reposts: Math.max(0, (post.reposts ?? 0) + (wasReposted ? -1 : 1)),
             }
-          : post
-      )
+          : post,
+      ),
     );
   };
 
-  const handleBookmarkToggle = (postId: string, wasBookmarked: boolean) => {
+  const handleBookmarkToggle = async (postId: string, wasBookmarked: boolean) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleBookmark(postId);
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  bookmarks: data.bookmarks,
+                  isBookmarked: data.isBookmarked,
+                }
+              : post,
+          ),
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to toggle bookmark:', error);
+      }
+    }
+
     setPosts((prev) =>
       prev.map((post) =>
         post.id === postId
@@ -215,8 +444,32 @@ const TheHub = () => {
     );
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!newComment.trim() || !selectedPost) return;
+
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.createComment(selectedPost.id, {
+          content: newComment.trim(),
+        });
+
+        const mappedComment = mapApiCommentToUi(data);
+        setComments((prev) => [mappedComment, ...prev]);
+        setNewComment('');
+
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === selectedPost.id
+              ? { ...post, comments: post.comments + 1 }
+              : post,
+          ),
+        );
+
+        return;
+      } catch (error) {
+        console.error('Failed to create comment:', error);
+      }
+    }
     
     const comment: Comment = {
       id: String(Date.now()),
@@ -234,11 +487,53 @@ const TheHub = () => {
     setComments([...comments, comment]);
     setNewComment('');
     
-    setPosts(posts.map(p => 
-      p.id === selectedPost.id 
-        ? { ...p, comments: p.comments + 1 } 
-        : p
+    setPosts(posts.map((p) =>
+      p.id === selectedPost.id
+        ? { ...p, comments: p.comments + 1 }
+        : p,
     ));
+  };
+
+  const handleCreatePost = async (payload: { type: PostType; content: string }) => {
+    if (USE_REAL_FEED) {
+      const { data } = await postsApi.createPost({
+        type: payload.type,
+        content: payload.content,
+        visibility: 'public',
+      });
+
+      setPosts((prev) => [mapApiPostToUi(data), ...prev]);
+      return;
+    }
+
+    const localPost: Post = {
+      id: String(Date.now()),
+      userId: user?.id ?? 'local-user',
+      author: {
+        id: user?.id ?? 'local-user',
+        name: `${user?.firstName ?? 'New'} ${user?.lastName ?? 'User'}`.trim(),
+        company: 'Vendrom User',
+        avatar: user?.avatar,
+        userType: user?.userType ?? 'entrepreneur',
+      },
+      type: payload.type,
+      content: payload.content,
+      likes: 0,
+      loves: 0,
+      interests: 0,
+      bookmarks: 0,
+      reposts: 0,
+      comments: 0,
+      shares: 0,
+      createdAt: new Date(),
+      isLiked: false,
+      isInterested: false,
+      isShared: false,
+      isReposted: false,
+      isBookmarked: false,
+    };
+
+    setPosts((prev) => [localPost, ...prev]);
   };
 
   const getPostComments = (postId: string) => {
@@ -247,8 +542,8 @@ const TheHub = () => {
     );
   };
 
-  const getPostTypeIcon = (type: PostType) => {
-    const icons: Record<string, React.ElementType> = {
+  const getPostTypeIcon = (type: PostType): LucideIcon => {
+    const icons: Record<PostType, LucideIcon> = {
       update: MessageSquare,
       product: Package,
       service: Briefcase,
@@ -313,13 +608,33 @@ const TheHub = () => {
                 </DialogHeader>
                 <CreatePostForm 
                   onClose={() => setIsCreateDialogOpen(false)}
+                  onSubmit={handleCreatePost}
                 />
               </DialogContent>
             </Dialog>
           </div>
 
+          {USE_REAL_FEED && isFeedLoading && (
+            <Card>
+              <CardContent className="p-4 text-sm text-muted-foreground">
+                Loading live feed...
+              </CardContent>
+            </Card>
+          )}
+
+          {USE_REAL_FEED && feedError && (
+            <Card>
+              <CardContent className="p-4 text-sm text-amber-700">
+                {feedError}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Main Tabs: My Feed | Explore | Search */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => setActiveTab(value as 'my-feed' | 'explore' | 'search')}
+          >
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="my-feed" className="flex items-center gap-2">
                 <Users className="w-4 h-4" />
@@ -368,10 +683,11 @@ const TheHub = () => {
                     <PostCard
                       key={post.id}
                       post={post}
-                      isLiked={isLiked(post.id)}
-                      isInterested={isInterested(post.id)}
-                      isShared={isShared(post.id)}
-                      isReposted={isReposted(post.id)}
+                      isLiked={USE_REAL_FEED ? !!post.isLiked : isLiked(post.id)}
+                      isInterested={USE_REAL_FEED ? !!post.isInterested : isInterested(post.id)}
+                      isShared={USE_REAL_FEED ? !!post.isShared : isShared(post.id)}
+                      isReposted={USE_REAL_FEED ? !!post.isReposted : isReposted(post.id)}
+                      isBookmarked={USE_REAL_FEED ? !!post.isBookmarked : undefined}
                       onLike={() => handleLike(post.id)}
                       onInterest={() => handleInterest(post.id)}
                       onShare={() => handleShare(post)}
@@ -419,10 +735,11 @@ const TheHub = () => {
                     <PostCard
                       key={post.id}
                       post={post}
-                      isLiked={isLiked(post.id)}
-                      isInterested={isInterested(post.id)}
-                      isShared={isShared(post.id)}
-                      isReposted={isReposted(post.id)}
+                      isLiked={USE_REAL_FEED ? !!post.isLiked : isLiked(post.id)}
+                      isInterested={USE_REAL_FEED ? !!post.isInterested : isInterested(post.id)}
+                      isShared={USE_REAL_FEED ? !!post.isShared : isShared(post.id)}
+                      isReposted={USE_REAL_FEED ? !!post.isReposted : isReposted(post.id)}
+                      isBookmarked={USE_REAL_FEED ? !!post.isBookmarked : undefined}
                       onLike={() => handleLike(post.id)}
                       onInterest={() => handleInterest(post.id)}
                       onShare={() => handleShare(post)}
@@ -778,13 +1095,14 @@ interface PostCardProps {
   isInterested: boolean;
   isShared: boolean;
   isReposted: boolean;
+  isBookmarked?: boolean;
   onLike: () => void;
   onInterest: () => void;
   onShare: () => void;
   onRepost: () => void;
-  onBookmarkToggle: (wasBookmarked: boolean) => void;
+  onBookmarkToggle: (wasBookmarked: boolean) => Promise<void> | void;
   onCommentClick: () => void;
-  getPostTypeIcon: (type: PostType) => React.ElementType;
+  getPostTypeIcon: (type: PostType) => LucideIcon;
   getPostTypeColor: (type: PostType) => string;
 }
 
@@ -794,6 +1112,7 @@ const PostCard = ({
   isInterested,
   isShared,
   isReposted,
+  isBookmarked,
   onLike,
   onInterest,
   onShare,
@@ -803,10 +1122,10 @@ const PostCard = ({
   getPostTypeIcon,
   getPostTypeColor,
 }: PostCardProps) => {
-  const { addBookmark, removeBookmark, isBookmarked } = useBookmarks();
+  const { addBookmark, removeBookmark, isBookmarked: isBookmarkedLocally } = useBookmarks();
   const TypeIcon = getPostTypeIcon(post.type);
   const typeConfig = postTypeConfig[post.type];
-  const bookmarked = isBookmarked(post.id);
+  const bookmarked = USE_REAL_FEED ? !!isBookmarked : isBookmarkedLocally(post.id);
 
   const getBookmarkCategory = (type: PostType): BookmarkCategory => {
     switch (type) {
@@ -829,6 +1148,12 @@ const PostCard = ({
 
   const handleBookmarkToggle = () => {
     const wasBookmarked = bookmarked;
+
+    if (USE_REAL_FEED) {
+      onBookmarkToggle(wasBookmarked);
+      return;
+    }
+
     if (bookmarked) {
       removeBookmark(post.id);
       onBookmarkToggle(wasBookmarked);
@@ -1159,19 +1484,32 @@ const PostCard = ({
 
 interface CreatePostFormProps {
   onClose: () => void;
+  onSubmit: (payload: { type: PostType; content: string }) => Promise<void> | void;
 }
 
-const CreatePostForm = ({ onClose }: CreatePostFormProps) => {
+const CreatePostForm = ({ onClose, onSubmit }: CreatePostFormProps) => {
   const [postType, setPostType] = useState<PostType>('update');
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = () => {
-    onClose();
-    setContent('');
+  const handleSubmit = async () => {
+    if (!content.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        type: postType,
+        content: content.trim(),
+      });
+      onClose();
+      setContent('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const getPostTypeIcon = (type: PostType): React.ElementType => {
-    const icons: Record<string, React.ElementType> = {
+  const getPostTypeIcon = (type: PostType): LucideIcon => {
+    const icons: Record<PostType, LucideIcon> = {
       update: MessageSquare,
       product: Package,
       service: Briefcase,
@@ -1230,9 +1568,9 @@ const CreatePostForm = ({ onClose }: CreatePostFormProps) => {
       <Button 
         onClick={handleSubmit}
         className="w-full bg-[var(--brand-primary)]"
-        disabled={!content.trim()}
+        disabled={!content.trim() || isSubmitting}
       >
-        Post
+        {isSubmitting ? 'Posting...' : 'Post'}
       </Button>
     </div>
   );

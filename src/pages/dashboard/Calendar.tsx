@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ComponentProps, ElementType } from 'react';
+import type { ComponentProps } from 'react';
 import {
   addMinutes,
   addDays,
@@ -43,6 +43,7 @@ import {
   Briefcase,
   Video,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   calendarEvents,
   calendarIntegrations,
@@ -66,7 +67,7 @@ const typeDots: Record<CalendarEventType, string> = {
   reminder: 'bg-amber-500',
 };
 
-const typeIcons: Record<CalendarEventType, ElementType> = {
+const typeIcons: Record<CalendarEventType, LucideIcon> = {
   meeting: Users,
   deadline: Target,
   event: CalendarDays,

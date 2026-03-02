@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { postsApi, type BookmarkDto } from '@/api/posts';
 
-export type BookmarkCategory = 
+const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
+
+export type BookmarkCategory =
   | 'all'
   | 'business'
   | 'networking'
@@ -52,7 +55,6 @@ const defaultCategories = [
   { value: 'inspiration' as BookmarkCategory, label: 'Inspiration', icon: 'Sparkles' },
 ];
 
-// Sample bookmarks data
 const sampleBookmarks: Bookmark[] = [
   {
     id: '1',
@@ -92,45 +94,130 @@ const sampleBookmarks: Bookmark[] = [
   },
 ];
 
+function mapApiBookmark(bookmark: BookmarkDto): Bookmark {
+  return {
+    id: bookmark.id,
+    sourceId: bookmark.sourceId ?? undefined,
+    title: bookmark.title,
+    description: bookmark.description ?? undefined,
+    url: bookmark.url ?? undefined,
+    type: bookmark.type,
+    category: bookmark.category,
+    tags: bookmark.tags,
+    imageUrl: bookmark.imageUrl ?? undefined,
+    authorName: bookmark.authorName ?? undefined,
+    authorAvatar: bookmark.authorAvatar ?? undefined,
+    createdAt: new Date(bookmark.createdAt),
+    savedAt: new Date(bookmark.savedAt),
+  };
+}
+
 export const BookmarkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>(sampleBookmarks);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>(USE_REAL_FEED ? [] : sampleBookmarks);
 
-  const addBookmark = useCallback((bookmark: Omit<Bookmark, 'id' | 'savedAt'>) => {
-    const newBookmark: Bookmark = {
-      ...bookmark,
-      id: Math.random().toString(36).substr(2, 9),
-      savedAt: new Date(),
-    };
-    setBookmarks((prev) => [newBookmark, ...prev]);
+  const loadBookmarks = useCallback(async () => {
+    if (!USE_REAL_FEED) return;
+
+    try {
+      const { data } = await postsApi.getBookmarks({ limit: 200 });
+      setBookmarks(data.items.map(mapApiBookmark));
+    } catch (error) {
+      console.error('Failed to load bookmarks from API:', error);
+      setBookmarks([]);
+    }
   }, []);
 
-  const removeBookmark = useCallback((id: string) => {
-    setBookmarks((prev) => prev.filter((b) => b.id !== id && b.sourceId !== id));
-  }, []);
+  useEffect(() => {
+    if (!USE_REAL_FEED) return;
+    void loadBookmarks();
+  }, [loadBookmarks]);
 
-  const isBookmarked = useCallback((id: string) => {
-    return bookmarks.some((b) => b.id === id || b.sourceId === id);
-  }, [bookmarks]);
+  const addBookmark = useCallback(
+    (bookmark: Omit<Bookmark, 'id' | 'savedAt'>) => {
+      if (USE_REAL_FEED && bookmark.type === 'post' && bookmark.sourceId) {
+        const sourceId = bookmark.sourceId;
+        const existing = bookmarks.some((item) => item.id === sourceId || item.sourceId === sourceId);
+        if (existing) {
+          return;
+        }
 
-  const getBookmarksByCategory = useCallback((category: BookmarkCategory) => {
-    if (category === 'all') return bookmarks;
-    return bookmarks.filter((b) => b.category === category);
-  }, [bookmarks]);
+        void (async () => {
+          try {
+            await postsApi.toggleBookmark(sourceId);
+            await loadBookmarks();
+          } catch (error) {
+            console.error('Failed to add bookmark via API:', error);
+          }
+        })();
+        return;
+      }
 
-  const getBookmarksByTag = useCallback((tag: string) => {
-    return bookmarks.filter((b) => b.tags.includes(tag.toLowerCase()));
-  }, [bookmarks]);
+      const newBookmark: Bookmark = {
+        ...bookmark,
+        id: Math.random().toString(36).slice(2, 11),
+        savedAt: new Date(),
+      };
+      setBookmarks((prev) => [newBookmark, ...prev]);
+    },
+    [bookmarks, loadBookmarks],
+  );
 
-  const searchBookmarks = useCallback((query: string) => {
-    const lowerQuery = query.toLowerCase();
-    return bookmarks.filter(
-      (b) =>
-        b.title.toLowerCase().includes(lowerQuery) ||
-        b.description?.toLowerCase().includes(lowerQuery) ||
-        b.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)) ||
-        b.authorName?.toLowerCase().includes(lowerQuery)
-    );
-  }, [bookmarks]);
+  const removeBookmark = useCallback(
+    (id: string) => {
+      const matched = bookmarks.find((bookmark) => bookmark.id === id || bookmark.sourceId === id);
+      if (!matched) {
+        return;
+      }
+
+      setBookmarks((prev) => prev.filter((bookmark) => bookmark.id !== id && bookmark.sourceId !== id));
+
+      if (!USE_REAL_FEED) {
+        return;
+      }
+
+      void (async () => {
+        try {
+          await postsApi.deleteBookmark(matched.id);
+        } catch (error) {
+          console.error('Failed to remove bookmark via API:', error);
+          await loadBookmarks();
+        }
+      })();
+    },
+    [bookmarks, loadBookmarks],
+  );
+
+  const isBookmarked = useCallback(
+    (id: string) => bookmarks.some((bookmark) => bookmark.id === id || bookmark.sourceId === id),
+    [bookmarks],
+  );
+
+  const getBookmarksByCategory = useCallback(
+    (category: BookmarkCategory) => {
+      if (category === 'all') return bookmarks;
+      return bookmarks.filter((bookmark) => bookmark.category === category);
+    },
+    [bookmarks],
+  );
+
+  const getBookmarksByTag = useCallback(
+    (tag: string) => bookmarks.filter((bookmark) => bookmark.tags.includes(tag.toLowerCase())),
+    [bookmarks],
+  );
+
+  const searchBookmarks = useCallback(
+    (query: string) => {
+      const lowerQuery = query.toLowerCase();
+      return bookmarks.filter(
+        (bookmark) =>
+          bookmark.title.toLowerCase().includes(lowerQuery) ||
+          bookmark.description?.toLowerCase().includes(lowerQuery) ||
+          bookmark.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)) ||
+          bookmark.authorName?.toLowerCase().includes(lowerQuery),
+      );
+    },
+    [bookmarks],
+  );
 
   return (
     <BookmarkContext.Provider

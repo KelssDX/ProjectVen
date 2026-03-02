@@ -9,11 +9,12 @@ import {
   Megaphone, 
   Handshake 
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
 
 interface FeatureCardProps {
-  icon: React.ElementType;
+  icon: LucideIcon;
   title: string;
   description: string;
   index: number;

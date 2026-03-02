@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { postsApi, type PostDto } from '@/api/posts';
 import { useBookmarks } from '@/context/BookmarkContext';
 import { useEngagement } from '@/context/EngagementContext';
-import { mockPosts } from '@/data/mockPosts';
 import type { Post as FeedPost } from '@/types';
 import { 
   MapPin, 
@@ -27,6 +27,41 @@ import {
   Star,
   BarChart3,
 } from 'lucide-react';
+
+const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
+
+function mapApiPostToUi(post: PostDto): FeedPost {
+  return {
+    id: post.id,
+    userId: post.userId,
+    author: {
+      id: post.author.id,
+      name: post.author.name,
+      company: post.author.company,
+      avatar: post.author.avatar ?? undefined,
+      userType: post.author.userType,
+    },
+    type: post.type,
+    content: post.content,
+    media: post.media
+      .filter((item) => item.type === 'image' || item.type === 'video')
+      .map((item) => ({ type: item.type as 'image' | 'video', url: item.url })),
+    likes: post.likes,
+    loves: post.loves,
+    interests: post.interests,
+    bookmarks: post.bookmarks,
+    reposts: post.reposts,
+    comments: post.comments,
+    shares: post.shares,
+    createdAt: new Date(post.createdAt),
+    isLiked: post.isLiked ?? false,
+    isLoved: post.isLoved ?? false,
+    isInterested: post.isInterested ?? false,
+    isShared: post.isShared ?? false,
+    isReposted: post.isReposted ?? false,
+    isBookmarked: post.isBookmarked ?? false,
+  };
+}
 
 interface ProfilePost {
   id: string;
@@ -62,29 +97,70 @@ interface Education {
 const Profile = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [activityPosts, setActivityPosts] = useState<FeedPost[]>([]);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const { bookmarks } = useBookmarks();
   const {
     state: engagementState,
+    refreshFromApi,
   } = useEngagement();
+
+  useEffect(() => {
+    if (!USE_REAL_FEED) return;
+
+    let cancelled = false;
+
+    const loadActivity = async () => {
+      try {
+        const { data } = await postsApi.getFeed({ limit: 100 });
+        if (cancelled) return;
+        setActivityPosts(data.items.map(mapApiPostToUi));
+        setActivityError(null);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to load profile activity feed:', error);
+        setActivityPosts([]);
+        setActivityError('Could not load live activity right now.');
+      }
+    };
+
+    void loadActivity();
+    void refreshFromApi();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshFromApi]);
 
   const likedPosts = useMemo(() => {
     const likedIds = new Set([
       ...engagementState.liked,
       ...engagementState.loved,
     ]);
-    return mockPosts.filter((post) => likedIds.has(post.id));
-  }, [engagementState.liked, engagementState.loved]);
+    return activityPosts.filter(
+      (post) => likedIds.has(post.id) || !!post.isLiked || !!post.isLoved,
+    );
+  }, [activityPosts, engagementState.liked, engagementState.loved]);
   const sharedPosts = useMemo(
-    () => mockPosts.filter((post) => engagementState.shared.includes(post.id)),
-    [engagementState.shared]
+    () =>
+      activityPosts.filter(
+        (post) => engagementState.shared.includes(post.id) || !!post.isShared,
+      ),
+    [activityPosts, engagementState.shared],
   );
   const repostedPosts = useMemo(
-    () => mockPosts.filter((post) => engagementState.reposted.includes(post.id)),
-    [engagementState.reposted]
+    () =>
+      activityPosts.filter(
+        (post) => engagementState.reposted.includes(post.id) || !!post.isReposted,
+      ),
+    [activityPosts, engagementState.reposted],
   );
   const interestedPosts = useMemo(
-    () => mockPosts.filter((post) => engagementState.interested.includes(post.id)),
-    [engagementState.interested]
+    () =>
+      activityPosts.filter(
+        (post) => engagementState.interested.includes(post.id) || !!post.isInterested,
+      ),
+    [activityPosts, engagementState.interested],
   );
   const interestTypes = useMemo(
     () => Array.from(new Set(interestedPosts.map((post) => post.type))),
@@ -473,6 +549,14 @@ const Profile = () => {
             <Badge variant="secondary">Private</Badge>
             <p className="text-sm text-muted-foreground">Only you can see this activity.</p>
           </div>
+
+          {activityError && (
+            <Card>
+              <CardContent className="pt-6 text-sm text-amber-700">
+                {activityError}
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">

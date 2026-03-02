@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/context/AuthContext';
+import { postsApi, type PostCommentDto, type PostDto } from '@/api/posts';
 import { mockPosts, mockComments, postTypeConfig } from '@/data/mockPosts';
 import type { Post, PostType, Comment } from '@/types';
 import {
@@ -32,6 +33,7 @@ import {
   Bookmark,
   ExternalLink,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import {
   Dialog,
@@ -48,37 +50,186 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
+
+function mapApiPostToUi(post: PostDto): Post {
+  return {
+    id: post.id,
+    userId: post.userId,
+    author: {
+      id: post.author.id,
+      name: post.author.name,
+      company: post.author.company,
+      avatar: post.author.avatar ?? undefined,
+      userType: post.author.userType,
+    },
+    type: post.type,
+    content: post.content,
+    media: post.media
+      .filter((item) => item.type === 'image' || item.type === 'video')
+      .map((item) => ({ type: item.type as 'image' | 'video', url: item.url })),
+    likes: post.likes,
+    loves: post.loves,
+    interests: post.interests,
+    bookmarks: post.bookmarks,
+    reposts: post.reposts,
+    comments: post.comments,
+    shares: post.shares,
+    createdAt: new Date(post.createdAt),
+    isLiked: post.isLiked ?? false,
+    isLoved: post.isLoved ?? false,
+    isInterested: post.isInterested ?? false,
+    isShared: post.isShared ?? false,
+    isReposted: post.isReposted ?? false,
+    isBookmarked: post.isBookmarked ?? false,
+  };
+}
+
+function mapApiCommentToUi(comment: PostCommentDto): Comment {
+  return {
+    id: comment.id,
+    postId: comment.postId,
+    userId: comment.userId,
+    content: comment.content,
+    likes: comment.likes,
+    createdAt: new Date(comment.createdAt),
+    author: {
+      name: comment.author.name,
+      avatar: comment.author.avatar ?? undefined,
+    },
+  };
+}
+
 const SocialFeed = () => {
   const { user } = useAuth();
-  const [posts, setPosts] = useState<Post[]>(mockPosts);
-  const [comments, setComments] = useState<Comment[]>(mockComments);
+  const [posts, setPosts] = useState<Post[]>(USE_REAL_FEED ? [] : mockPosts);
+  const [comments, setComments] = useState<Comment[]>(USE_REAL_FEED ? [] : mockComments);
   const [activeTab, setActiveTab] = useState('all');
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [isFeedLoading, setIsFeedLoading] = useState(USE_REAL_FEED);
+  const [feedError, setFeedError] = useState<string | null>(null);
   
   // Use user to avoid unused variable warning
   void user;
+
+  useEffect(() => {
+    if (!USE_REAL_FEED) return;
+
+    let cancelled = false;
+
+    const loadFeed = async () => {
+      setIsFeedLoading(true);
+      setFeedError(null);
+      try {
+        const { data } = await postsApi.getFeed({ limit: 30 });
+        if (cancelled) return;
+        setPosts(data.items.map(mapApiPostToUi));
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to load social feed from API:', error);
+        setFeedError('Unable to load live feed. Showing fallback data.');
+        setPosts(mockPosts);
+        setComments(mockComments);
+      } finally {
+        if (!cancelled) {
+          setIsFeedLoading(false);
+        }
+      }
+    };
+
+    void loadFeed();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!USE_REAL_FEED || !selectedPost) return;
+
+    let cancelled = false;
+
+    const loadComments = async () => {
+      try {
+        const { data } = await postsApi.getComments(selectedPost.id, 100);
+        if (cancelled) return;
+
+        const mappedComments = data.items.map(mapApiCommentToUi);
+        setComments((previousComments) => [
+          ...previousComments.filter((comment) => comment.postId !== selectedPost.id),
+          ...mappedComments,
+        ]);
+      } catch (error) {
+        console.error('Failed to load post comments:', error);
+      }
+    };
+
+    void loadComments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPost?.id]);
 
   const filteredPosts = activeTab === 'all' 
     ? posts 
     : posts.filter(p => p.type === activeTab);
 
-  const handleLike = (postId: string) => {
-    setPosts(posts.map(p => {
-      if (p.id === postId) {
-        return {
-          ...p,
-          likes: p.isLiked ? p.likes - 1 : p.likes + 1,
-          isLiked: !p.isLiked,
-        };
+  const handleLike = async (postId: string) => {
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.toggleReaction({ postId, reaction: 'like' });
+        setPosts((previousPosts) =>
+          previousPosts.map((post) =>
+            post.id === postId
+              ? { ...post, likes: data.counts.likes, isLiked: data.isActive }
+              : post,
+          ),
+        );
+        return;
+      } catch (error) {
+        console.error('Failed to toggle like:', error);
       }
-      return p;
-    }));
+    }
+
+    setPosts((previousPosts) =>
+      previousPosts.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              likes: Math.max(0, post.likes + (post.isLiked ? -1 : 1)),
+              isLiked: !post.isLiked,
+            }
+          : post,
+      ),
+    );
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!newComment.trim() || !selectedPost) return;
+
+    if (USE_REAL_FEED) {
+      try {
+        const { data } = await postsApi.createComment(selectedPost.id, {
+          content: newComment.trim(),
+        });
+
+        setComments((previousComments) => [mapApiCommentToUi(data), ...previousComments]);
+        setPosts((previousPosts) =>
+          previousPosts.map((post) =>
+            post.id === selectedPost.id
+              ? { ...post, comments: post.comments + 1 }
+              : post,
+          ),
+        );
+        setNewComment('');
+        return;
+      } catch (error) {
+        console.error('Failed to create comment:', error);
+      }
+    }
     
     const comment: Comment = {
       id: String(Date.now()),
@@ -93,15 +244,59 @@ const SocialFeed = () => {
       createdAt: new Date(),
     };
     
-    setComments([...comments, comment]);
+    setComments((previousComments) => [...previousComments, comment]);
     setNewComment('');
     
     // Update post comment count
-    setPosts(posts.map(p => 
-      p.id === selectedPost.id 
-        ? { ...p, comments: p.comments + 1 } 
-        : p
-    ));
+    setPosts((previousPosts) =>
+      previousPosts.map((post) =>
+        post.id === selectedPost.id
+          ? { ...post, comments: post.comments + 1 }
+          : post,
+      ),
+    );
+  };
+
+  const handleCreatePost = async (payload: { type: PostType; content: string }) => {
+    if (USE_REAL_FEED) {
+      const { data } = await postsApi.createPost({
+        type: payload.type,
+        content: payload.content,
+        visibility: 'public',
+      });
+      setPosts((previousPosts) => [mapApiPostToUi(data), ...previousPosts]);
+      return;
+    }
+
+    const localPost: Post = {
+      id: String(Date.now()),
+      userId: user?.id ?? 'local-user',
+      author: {
+        id: user?.id ?? 'local-user',
+        name: `${user?.firstName ?? 'New'} ${user?.lastName ?? 'User'}`.trim(),
+        company: 'Vendrom User',
+        avatar: user?.avatar,
+        userType: user?.userType ?? 'entrepreneur',
+      },
+      type: payload.type,
+      content: payload.content,
+      likes: 0,
+      loves: 0,
+      interests: 0,
+      bookmarks: 0,
+      reposts: 0,
+      comments: 0,
+      shares: 0,
+      createdAt: new Date(),
+      isLiked: false,
+      isLoved: false,
+      isInterested: false,
+      isShared: false,
+      isReposted: false,
+      isBookmarked: false,
+    };
+
+    setPosts((previousPosts) => [localPost, ...previousPosts]);
   };
 
   const getPostComments = (postId: string) => {
@@ -110,8 +305,8 @@ const SocialFeed = () => {
     );
   };
 
-  const getPostTypeIcon = (type: PostType) => {
-    const icons: Record<string, React.ElementType> = {
+  const getPostTypeIcon = (type: PostType): LucideIcon => {
+    const icons: Record<PostType, LucideIcon> = {
       update: MessageSquare,
       product: Package,
       service: Briefcase,
@@ -159,6 +354,22 @@ const SocialFeed = () => {
           <TabsTrigger value="idea">Ideas</TabsTrigger>
         </TabsList>
       </Tabs>
+
+      {USE_REAL_FEED && isFeedLoading && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Loading live feed...
+          </CardContent>
+        </Card>
+      )}
+
+      {USE_REAL_FEED && feedError && (
+        <Card>
+          <CardContent className="p-4 text-sm text-amber-700">
+            {feedError}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Posts Feed */}
       <div className="space-y-4">
@@ -253,6 +464,7 @@ const SocialFeed = () => {
         open={isCreateDialogOpen} 
         onOpenChange={setIsCreateDialogOpen}
         user={user}
+        onSubmit={handleCreatePost}
       />
     </div>
   );
@@ -262,7 +474,7 @@ interface PostCardProps {
   post: Post;
   onLike: () => void;
   onCommentClick: () => void;
-  getPostTypeIcon: (type: PostType) => React.ElementType;
+  getPostTypeIcon: (type: PostType) => LucideIcon;
   getPostTypeColor: (type: PostType) => string;
 }
 
@@ -533,20 +745,32 @@ const PostCard = ({ post, onLike, onCommentClick, getPostTypeIcon, getPostTypeCo
 interface CreatePostDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  user: any;
+  user: unknown;
+  onSubmit: (payload: { type: PostType; content: string }) => Promise<void> | void;
 }
 
-const CreatePostDialog = ({ open, onOpenChange, user }: CreatePostDialogProps) => {
+const CreatePostDialog = ({ open, onOpenChange, user, onSubmit }: CreatePostDialogProps) => {
   const [postType, setPostType] = useState<PostType>('update');
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Use user to avoid unused variable warning
   void user;
 
-  const handleSubmit = () => {
-    // Handle post creation
-    onOpenChange(false);
-    setContent('');
+  const handleSubmit = async () => {
+    if (!content.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        type: postType,
+        content: content.trim(),
+      });
+      onOpenChange(false);
+      setContent('');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -603,9 +827,9 @@ const CreatePostDialog = ({ open, onOpenChange, user }: CreatePostDialogProps) =
           <Button 
             onClick={handleSubmit}
             className="w-full bg-[var(--brand-primary)]"
-            disabled={!content.trim()}
+            disabled={!content.trim() || isSubmitting}
           >
-            Post
+            {isSubmitting ? 'Posting...' : 'Post'}
           </Button>
         </div>
       </DialogContent>
@@ -613,8 +837,8 @@ const CreatePostDialog = ({ open, onOpenChange, user }: CreatePostDialogProps) =
   );
 };
 
-const getPostTypeIcon = (type: PostType): React.ElementType => {
-  const icons: Record<string, React.ElementType> = {
+const getPostTypeIcon = (type: PostType): LucideIcon => {
+  const icons: Record<PostType, LucideIcon> = {
     update: MessageSquare,
     product: Package,
     service: Briefcase,

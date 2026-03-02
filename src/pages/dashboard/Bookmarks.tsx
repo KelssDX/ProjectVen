@@ -21,6 +21,7 @@ import {
   Tag,
   MoreVertical
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useBookmarks, type BookmarkCategory } from '@/context/BookmarkContext';
 import {
   DropdownMenu,
@@ -30,7 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
-const categoryIcons: Record<BookmarkCategory, React.ElementType> = {
+const categoryIcons: Record<BookmarkCategory, LucideIcon> = {
   all: Bookmark,
   business: Briefcase,
   networking: Users,

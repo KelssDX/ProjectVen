@@ -18,6 +18,7 @@ import {
   Briefcase,
   Clock,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   calendarEvents,
   calendarIntegrations,
@@ -33,7 +34,7 @@ const typeLabels: Record<CalendarEventType, string> = {
   reminder: 'Reminder',
 };
 
-const typeIcons: Record<CalendarEventType, React.ElementType> = {
+const typeIcons: Record<CalendarEventType, LucideIcon> = {
   meeting: Users,
   deadline: Target,
   event: CalendarDays,

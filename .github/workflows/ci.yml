@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - feature/**
+  pull_request:
+
+jobs:
+  backend-ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vendrome
+          POSTGRES_PASSWORD: vendrome
+          POSTGRES_DB: vendrome
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vendrome -d vendrome"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://vendrome:vendrome@localhost:5432/vendrome
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Lint
+        run: npm run lint --prefix backend
+
+      - name: Typecheck
+        run: npm run typecheck --prefix backend
+
+      - name: Unit test
+        run: npm run test:unit --prefix backend
+
+      - name: Migration check
+        run: npm run migrate:check --prefix backend
+
+      - name: Contract check
+        run: npm run contracts:check --prefix backend
+
+      - name: Build
+        run: npm run build --prefix backend
+
+      - name: OpenAPI generation
+        run: npm run openapi:generate --prefix backend
+
+      - name: Migration apply (baseline)
+        run: npm run migrate:up --prefix backend
+
+      - name: DB smoke check
+        run: npm run db:smoke --prefix backend

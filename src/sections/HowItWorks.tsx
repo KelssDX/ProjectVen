@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { UserPlus, Search, MessageSquare, TrendingUp } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -9,7 +10,7 @@ interface StepCardProps {
   step: number;
   title: string;
   description: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   isLeft: boolean;
   delay: number;
 }

@@ -335,4 +335,5 @@ export const userTypeLabels: Record<UserType, string> = {
   entrepreneur: 'Entrepreneur',
   investor: 'Investor',
   mentor: 'Mentor',
+  admin: 'Administrator',
 };

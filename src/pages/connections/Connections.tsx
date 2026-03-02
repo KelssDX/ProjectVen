@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
+import { connectionsApi } from '@/api/connections';
 import { mockConnections, connectionUsers } from '@/data/mockMessages';
+import type { Connection } from '@/types';
 import {
   Users,
   UserPlus,
@@ -26,12 +28,45 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 
+const USE_REAL_MESSAGES = import.meta.env.VITE_FEATURE_USE_REAL_MESSAGES === 'true';
+
+interface ConnectionDisplayUser {
+  id: string;
+  name: string;
+  company: string;
+  avatar?: string;
+  role: string;
+}
+
+const userTypeRoleMap: Record<string, string> = {
+  sme: 'SME Owner',
+  entrepreneur: 'Entrepreneur',
+  investor: 'Investor',
+  mentor: 'Mentor',
+  admin: 'Admin',
+};
+
 const Connections = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [connections, setConnections] = useState(mockConnections);
+  const [connections, setConnections] = useState<Connection[]>(mockConnections);
+  const [usersById, setUsersById] = useState<Record<string, ConnectionDisplayUser>>(
+    () =>
+      connectionUsers.reduce<Record<string, ConnectionDisplayUser>>((acc, item) => {
+        acc[item.id] = {
+          id: item.id,
+          name: item.name,
+          company: item.company,
+          avatar: item.avatar,
+          role: item.role,
+        };
+        return acc;
+      }, {}),
+  );
+  const [isLoading, setIsLoading] = useState(USE_REAL_MESSAGES);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [suggestedConnections] = useState([
     {
       id: 's1',
@@ -62,6 +97,65 @@ const Connections = () => {
     },
   ]);
 
+  useEffect(() => {
+    if (!USE_REAL_MESSAGES) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadConnections = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const { data } = await connectionsApi.getMine(searchQuery || undefined);
+        if (isCancelled) return;
+
+        const nextUsersById: Record<string, ConnectionDisplayUser> = {};
+        const combined = [...data.accepted, ...data.pendingReceived, ...data.pendingSent];
+
+        const mappedConnections: Connection[] = combined.map((connection) => {
+          nextUsersById[connection.otherUser.id] = {
+            id: connection.otherUser.id,
+            name: connection.otherUser.name,
+            company: connection.otherUser.company,
+            avatar: connection.otherUser.avatar ?? undefined,
+            role: userTypeRoleMap[connection.otherUser.userType] ?? 'Member',
+          };
+
+          return {
+            id: connection.id,
+            senderId: connection.requesterId,
+            receiverId: connection.addresseeId,
+            status: connection.status,
+            message: connection.message ?? undefined,
+            createdAt: new Date(connection.createdAt),
+            updatedAt: new Date(connection.updatedAt),
+          };
+        });
+
+        setUsersById((prev) => ({ ...prev, ...nextUsersById }));
+        setConnections(mappedConnections);
+      } catch (error) {
+        if (isCancelled) return;
+        console.error('Failed to load connections from API:', error);
+        setLoadError('Unable to load live connections. Showing fallback data.');
+        setConnections(mockConnections);
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadConnections();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [searchQuery]);
+
   const myConnections = connections.filter(
     c =>
       (c.senderId === user?.id || c.receiverId === user?.id) &&
@@ -76,33 +170,49 @@ const Connections = () => {
     c => c.senderId === user?.id && c.status === 'pending'
   );
 
-  const getFilteredConnections = (list: typeof mockConnections) => {
+  const getFilteredConnections = (list: Connection[]) => {
     return list.filter((conn) => {
       const otherUserId = conn.senderId === user?.id ? conn.receiverId : conn.senderId;
-      const otherUser = connectionUsers.find(u => u.id === otherUserId);
+      const otherUser = usersById[otherUserId];
       return otherUser?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
              otherUser?.company.toLowerCase().includes(searchQuery.toLowerCase());
     });
   };
 
-  const handleAccept = (connectionId: string) => {
-    setConnections(connections.map(c =>
-      c.id === connectionId ? { ...c, status: 'accepted' as const } : c
+  const handleAccept = async (connectionId: string) => {
+    if (USE_REAL_MESSAGES) {
+      try {
+        await connectionsApi.acceptConnection(connectionId);
+      } catch (error) {
+        console.error('Failed to accept connection:', error);
+      }
+    }
+
+    setConnections(connections.map((c) =>
+      c.id === connectionId ? { ...c, status: 'accepted' as const } : c,
     ));
   };
 
-  const handleReject = (connectionId: string) => {
-    setConnections(connections.map(c =>
-      c.id === connectionId ? { ...c, status: 'rejected' as const } : c
+  const handleReject = async (connectionId: string) => {
+    if (USE_REAL_MESSAGES) {
+      try {
+        await connectionsApi.rejectConnection(connectionId);
+      } catch (error) {
+        console.error('Failed to reject connection:', error);
+      }
+    }
+
+    setConnections(connections.map((c) =>
+      c.id === connectionId ? { ...c, status: 'rejected' as const } : c,
     ));
   };
 
-  const getOtherUser = (connection: typeof mockConnections[0]) => {
+  const getOtherUser = (connection: Connection) => {
     const otherUserId = connection.senderId === user?.id ? connection.receiverId : connection.senderId;
-    return connectionUsers.find(u => u.id === otherUserId);
+    return usersById[otherUserId];
   };
 
-  const renderConnectionCard = (connection: typeof mockConnections[0], showActions = false) => {
+  const renderConnectionCard = (connection: Connection, showActions = false) => {
     const otherUser = getOtherUser(connection);
     if (!otherUser) return null;
 
@@ -206,6 +316,22 @@ const Connections = () => {
           Find Connections
         </Button>
       </div>
+
+      {USE_REAL_MESSAGES && isLoading && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Loading live connections...
+          </CardContent>
+        </Card>
+      )}
+
+      {USE_REAL_MESSAGES && loadError && (
+        <Card>
+          <CardContent className="p-4 text-sm text-amber-700">
+            {loadError}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-4">

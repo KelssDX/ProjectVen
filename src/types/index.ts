@@ -1,5 +1,5 @@
 // User Types
-export type UserType = 'sme' | 'entrepreneur' | 'investor' | 'mentor';
+export type UserType = 'sme' | 'entrepreneur' | 'investor' | 'mentor' | 'admin';
 
 export type VerificationBadge =
   | 'buyer'
@@ -115,7 +115,7 @@ export interface Connection {
   id: string;
   senderId: string;
   receiverId: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'blocked';
   message?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -325,6 +325,7 @@ export interface Post {
   isInterested?: boolean;
   isReposted?: boolean;
   isShared?: boolean;
+  isBookmarked?: boolean;
 }
 
 export interface Comment {

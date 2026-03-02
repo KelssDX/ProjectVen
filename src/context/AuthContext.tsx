@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { authApi, type AuthSession } from '@/api/auth';
+import { setApiClientAuth } from '@/api/http';
+import {
+  clearSessionTokens,
+  getAccessToken,
+  getRefreshToken,
+  setSessionTokens,
+} from '@/api/session';
 import type { User, UserType } from '@/types';
 
 interface AuthContextType {
@@ -7,145 +15,137 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
 }
+
+type RegisterUserType = Exclude<UserType, 'admin'>;
 
 interface RegisterData {
   email: string;
   password: string;
   firstName: string;
   lastName: string;
-  userType: UserType;
+  userType: RegisterUserType;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo
-const MOCK_USERS: User[] = [
-  {
-    id: '1',
-    email: 'demo@businesshub.com',
-    firstName: 'Demo',
-    lastName: 'User',
-    userType: 'entrepreneur',
-    avatar: '/avatar-1.jpg',
-    isVerified: true,
+function mapAuthUserToUser(authUser: AuthSession['user']): User {
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    firstName: authUser.firstName,
+    lastName: authUser.lastName,
+    userType: authUser.userType,
+    isVerified: authUser.isVerified,
     verification: {
-      level: 'trusted',
-      badges: ['entrepreneur', 'seller', 'buyer'],
-      venScore: 4.7,
-      businessScore: 86,
+      level: authUser.verificationLevel,
+      badges: authUser.isVerified ? ['buyer'] : [],
+      venScore: 0,
+      businessScore: 0,
     },
     createdAt: new Date(),
-  },
-  {
-    id: '2',
-    email: 'sarah@techstart.com',
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    userType: 'sme',
-    avatar: '/avatar-1.jpg',
-    isVerified: true,
-    verification: {
-      level: 'verified',
-      badges: ['company', 'seller'],
-      venScore: 4.5,
-      businessScore: 78,
-    },
-    createdAt: new Date(),
-  },
-  {
-    id: '3',
-    email: 'michael@greenenergy.com',
-    firstName: 'Michael',
-    lastName: 'Chen',
-    userType: 'investor',
-    avatar: '/avatar-2.jpg',
-    isVerified: true,
-    verification: {
-      level: 'verified',
-      badges: ['investor'],
-      venScore: 4.2,
-      businessScore: 72,
-    },
-    createdAt: new Date(),
-  },
-];
+  };
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Authentication request failed.';
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check for saved session on mount
+  const refreshFromStoredToken = useCallback(async (): Promise<string | null> => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      clearSessionTokens();
+      setUser(null);
+      return null;
+    }
+
+    try {
+      const { data } = await authApi.refresh(refreshToken);
+      setSessionTokens(data.tokens);
+      setUser(mapAuthUserToUser(data.user));
+      return data.tokens.accessToken;
+    } catch {
+      clearSessionTokens();
+      setUser(null);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
-    const savedUser = localStorage.getItem('businesshub_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
-  }, []);
+    setApiClientAuth({
+      getToken: () => getAccessToken(),
+      refreshToken: refreshFromStoredToken,
+    });
+  }, [refreshFromStoredToken]);
 
-  const login = useCallback(async (email: string, _password: string) => {
-    setIsLoading(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Find user (mock authentication - password not checked in demo)
-    const foundUser = MOCK_USERS.find(u => u.email === email);
-    
-    if (!foundUser) {
-      throw new Error('Invalid email or password');
-    }
-    
-    // Save to localStorage
-    localStorage.setItem('businesshub_user', JSON.stringify(foundUser));
-    setUser(foundUser);
-    setIsLoading(false);
-  }, []);
+  useEffect(() => {
+    let mounted = true;
 
-  const register = useCallback(async (_data: RegisterData) => {
-    setIsLoading(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Create new user (password is handled by backend in real app)
-    const newUser: User = {
-      id: String(Date.now()),
-      email: _data.email,
-      firstName: _data.firstName,
-      lastName: _data.lastName,
-      userType: _data.userType,
-      isVerified: false,
-      verification: {
-        level: 'basic',
-        badges: ['buyer'],
-        venScore: 0,
-        businessScore: 0,
-      },
-      createdAt: new Date(),
+    const bootstrap = async () => {
+      setIsLoading(true);
+      await refreshFromStoredToken();
+      if (mounted) {
+        setIsLoading(false);
+      }
     };
-    
-    // Save to localStorage
-    localStorage.setItem('businesshub_user', JSON.stringify(newUser));
-    setUser(newUser);
-    setIsLoading(false);
+
+    void bootstrap();
+
+    return () => {
+      mounted = false;
+    };
+  }, [refreshFromStoredToken]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const { data } = await authApi.login({ email, password });
+      setSessionTokens(data.tokens);
+      setUser(mapAuthUserToUser(data.user));
+    } catch (error) {
+      throw new Error(toErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('businesshub_user');
-    setUser(null);
+  const register = useCallback(async (payload: RegisterData) => {
+    setIsLoading(true);
+    try {
+      const { data } = await authApi.register(payload);
+      setSessionTokens(data.tokens);
+      setUser(mapAuthUserToUser(data.user));
+    } catch (error) {
+      throw new Error(toErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const logout = useCallback(async () => {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await authApi.logout(refreshToken);
+      }
+    } finally {
+      clearSessionTokens();
+      setUser(null);
+    }
   }, []);
 
   const updateUser = useCallback((data: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...data };
-      localStorage.setItem('businesshub_user', JSON.stringify(updatedUser));
-      setUser(updatedUser);
-    }
-  }, [user]);
+    setUser((previousUser) =>
+      previousUser ? { ...previousUser, ...data } : previousUser,
+    );
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -171,5 +171,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-export default AuthContext;

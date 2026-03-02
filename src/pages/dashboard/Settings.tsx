@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import type { VerificationBadge } from '@/types';
 import {
   defaultBriefboardSettings,
   loadBriefboardSettings,
@@ -138,7 +139,7 @@ const Settings = () => {
     businessScore: 0,
   };
 
-  const verificationBadges = [
+  const verificationBadges: { key: VerificationBadge; label: string }[] = [
     { key: 'buyer', label: 'Buyer / Client' },
     { key: 'entrepreneur', label: 'Entrepreneur' },
     { key: 'company', label: 'Company' },

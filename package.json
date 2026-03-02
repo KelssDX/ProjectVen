@@ -1,13 +1,25 @@
 {
-  "name": "my-app",
+  "name": "vendrome-web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:frontend": "vite",
+    "dev:backend": "npm run dev --prefix backend",
     "build": "tsc -b && vite build",
+    "build:backend": "npm run build --prefix backend",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck:backend": "npm run typecheck --prefix backend",
+    "test:backend": "npm run test:unit --prefix backend",
+    "backend:migrate:up": "npm run migrate:up --prefix backend",
+    "backend:db:smoke": "npm run db:smoke --prefix backend",
+    "backend:openapi:generate": "npm run build --prefix backend && npm run openapi:generate --prefix backend",
+    "frontend:api:types:generate": "openapi-typescript docs/openapi/backend-openapi.json -o src/api/generated/openapi.d.ts",
+    "contracts:sync": "npm run backend:openapi:generate && npm run frontend:api:types:generate",
+    "infra:up": "docker compose -f docker-compose.backend.yml up -d",
+    "infra:down": "docker compose -f docker-compose.backend.yml down"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -78,6 +90,7 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "kimi-plugin-inspect-react": "^1.0.3",
+    "openapi-typescript": "^7.10.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",

@@ -159,11 +159,11 @@ const AppRoutes = () => {
 function App() {
   return (
     <BrowserRouter>
-      <EngagementProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <EngagementProvider>
           <AppRoutes />
-        </AuthProvider>
-      </EngagementProvider>
+        </EngagementProvider>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

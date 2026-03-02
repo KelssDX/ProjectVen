@@ -31,6 +31,7 @@ import {
   Eye,
   Briefcase,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface BusinessInsight {
   id: string;
@@ -48,7 +49,7 @@ interface Metric {
   value: string;
   change: string;
   trend: 'up' | 'down' | 'neutral';
-  icon: React.ElementType;
+  icon: LucideIcon;
 }
 
 interface NetworkRecommendation {
@@ -214,7 +215,7 @@ const Dashboard = () => {
     },
   ];
 
-  const eventIconMap: Record<CalendarEvent['type'], React.ElementType> = {
+  const eventIconMap: Record<CalendarEvent['type'], LucideIcon> = {
     meeting: Calendar,
     deadline: Clock,
     event: Users,
@@ -293,32 +294,35 @@ const Dashboard = () => {
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {metrics.map((metric, index) => (
-          <Card key={index} className="card-hover">
-            <CardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{metric.label}</p>
-                  <p className="text-2xl font-bold mt-1">{metric.value}</p>
-                  <p
-                    className={`text-xs mt-1 ${
-                      metric.trend === 'up'
-                        ? 'text-green-500'
-                        : metric.trend === 'down'
-                          ? 'text-red-500'
-                          : 'text-muted-foreground'
-                    }`}
-                  >
-                    {metric.change}
-                  </p>
+        {metrics.map((metric, index) => {
+          const MetricIcon = metric.icon;
+          return (
+            <Card key={index} className="card-hover">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{metric.label}</p>
+                    <p className="text-2xl font-bold mt-1">{metric.value}</p>
+                    <p
+                      className={`text-xs mt-1 ${
+                        metric.trend === 'up'
+                          ? 'text-green-500'
+                          : metric.trend === 'down'
+                            ? 'text-red-500'
+                            : 'text-muted-foreground'
+                      }`}
+                    >
+                      {metric.change}
+                    </p>
+                  </div>
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <MetricIcon className="w-5 h-5 text-primary" />
+                  </div>
                 </div>
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  <metric.icon className="w-5 h-5 text-primary" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Main Content Grid */}
@@ -545,23 +549,26 @@ const Dashboard = () => {
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
-              {upcomingItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-muted/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <item.icon className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="font-medium text-sm">{item.title}</p>
-                      <p className="text-xs text-muted-foreground">{item.time}</p>
+              {upcomingItems.map((item) => {
+                const ItemIcon = item.icon;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ItemIcon className="w-5 h-5 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium text-sm">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">{item.time}</p>
+                      </div>
                     </div>
+                    <Button size="sm" variant="outline" onClick={openPanel}>
+                      {item.actionLabel}
+                    </Button>
                   </div>
-                  <Button size="sm" variant="outline" onClick={openPanel}>
-                    {item.actionLabel}
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </CardContent>
           </Card>
 

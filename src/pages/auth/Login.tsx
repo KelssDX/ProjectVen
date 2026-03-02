@@ -197,10 +197,10 @@ const Login = () => {
           </CardFooter>
         </Card>
 
-        {/* Demo credentials */}
+        {/* Auth note */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
-            Demo credentials: <span className="font-mono">demo@vendrom.com</span> / any password
+            Sign in with a registered Vendrome account. New users can create one on the register page.
           </p>
         </div>
       </div>

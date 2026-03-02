@@ -12,6 +12,8 @@ import { VendromLogo } from '@/components/VendromLogo';
 import { Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react';
 import { userTypeLabels } from '@/data/mockProfiles';
 
+type RegisterUserType = Exclude<UserType, 'admin'>;
+
 const Register = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
@@ -25,7 +27,7 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    userType: 'entrepreneur' as UserType,
+    userType: 'entrepreneur' as RegisterUserType,
     agreeTerms: false,
   });
 
@@ -72,7 +74,7 @@ const Register = () => {
     }));
   };
 
-  const userTypes: UserType[] = ['entrepreneur', 'sme', 'investor', 'mentor'];
+  const userTypes: RegisterUserType[] = ['entrepreneur', 'sme', 'investor', 'mentor'];
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
@@ -211,7 +213,7 @@ const Register = () => {
                 <RadioGroup
                   value={formData.userType}
                   onValueChange={(value) =>
-                    setFormData(prev => ({ ...prev, userType: value as UserType }))
+                    setFormData(prev => ({ ...prev, userType: value as RegisterUserType }))
                   }
                   className="space-y-3"
                 >
