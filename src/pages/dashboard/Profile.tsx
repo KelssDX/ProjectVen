@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { postsApi, type PostDto } from '@/api/posts';
+import { postsApi } from '@/api/posts';
 import { useBookmarks } from '@/context/BookmarkContext';
 import { useEngagement } from '@/context/EngagementContext';
+import { mapPostDtoToUi } from '@/lib/post-mappers';
 import type { Post as FeedPost } from '@/types';
 import { 
   MapPin, 
@@ -29,39 +30,6 @@ import {
 } from 'lucide-react';
 
 const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
-
-function mapApiPostToUi(post: PostDto): FeedPost {
-  return {
-    id: post.id,
-    userId: post.userId,
-    author: {
-      id: post.author.id,
-      name: post.author.name,
-      company: post.author.company,
-      avatar: post.author.avatar ?? undefined,
-      userType: post.author.userType,
-    },
-    type: post.type,
-    content: post.content,
-    media: post.media
-      .filter((item) => item.type === 'image' || item.type === 'video')
-      .map((item) => ({ type: item.type as 'image' | 'video', url: item.url })),
-    likes: post.likes,
-    loves: post.loves,
-    interests: post.interests,
-    bookmarks: post.bookmarks,
-    reposts: post.reposts,
-    comments: post.comments,
-    shares: post.shares,
-    createdAt: new Date(post.createdAt),
-    isLiked: post.isLiked ?? false,
-    isLoved: post.isLoved ?? false,
-    isInterested: post.isInterested ?? false,
-    isShared: post.isShared ?? false,
-    isReposted: post.isReposted ?? false,
-    isBookmarked: post.isBookmarked ?? false,
-  };
-}
 
 interface ProfilePost {
   id: string;
@@ -114,7 +82,7 @@ const Profile = () => {
       try {
         const { data } = await postsApi.getFeed({ limit: 100 });
         if (cancelled) return;
-        setActivityPosts(data.items.map(mapApiPostToUi));
+        setActivityPosts(data.items.map(mapPostDtoToUi));
         setActivityError(null);
       } catch (error) {
         if (cancelled) return;

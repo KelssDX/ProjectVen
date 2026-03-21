@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { marketingApi } from '@/api/marketing';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,11 +25,15 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
+const USE_REAL_MARKETING =
+  import.meta.env.VITE_FEATURE_USE_REAL_MARKETING === 'true';
+
 const CreateCampaign = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -51,17 +56,39 @@ const CreateCampaign = () => {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsSubmitting(false);
-    setSuccess(true);
+    setSubmitError(null);
+
+    try {
+      if (USE_REAL_MARKETING) {
+        await marketingApi.createCampaign({
+          name: formData.name,
+          campaignType: formData.type as 'banner' | 'featured' | 'newsletter' | 'sponsored',
+          budget: estimatedCost,
+          startAt: formData.startDate!.toISOString(),
+          endAt: formData.endDate!.toISOString(),
+          targetIndustries: formData.targetIndustries,
+          targetLocations: formData.targetLocations,
+          targetUserTypes: formData.targetUserTypes,
+        });
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+
+      setIsSubmitting(false);
+      setSuccess(true);
+    } catch (error) {
+      setIsSubmitting(false);
+      setSubmitError(
+        error instanceof Error ? error.message : 'Failed to create campaign.',
+      );
+    }
   };
 
   const toggleArrayItem = (field: keyof typeof formData, value: string) => {
-    setFormData(prev => {
+    setFormData((prev) => {
       const arr = prev[field] as string[];
       const updated = arr.includes(value)
-        ? arr.filter(item => item !== value)
+        ? arr.filter((item) => item !== value)
         : [...arr, value];
       return { ...prev, [field]: updated };
     });
@@ -83,7 +110,8 @@ const CreateCampaign = () => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Campaign Created!</h2>
           <p className="text-gray-600 mb-6">
-            Your campaign "{formData.name}" has been created and is now pending review.
+            Your campaign "{formData.name}" has been created
+            {USE_REAL_MARKETING ? ' as a draft and is ready for activation.' : ' and is now pending review.'}
           </p>
           <div className="flex justify-center gap-4">
             <Button variant="outline" onClick={() => navigate('/dashboard/marketing')}>
@@ -103,7 +131,6 @@ const CreateCampaign = () => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" onClick={() => navigate('/dashboard/marketing')}>
           <ArrowLeft className="w-4 h-4 mr-2" />
@@ -115,7 +142,6 @@ const CreateCampaign = () => {
         </div>
       </div>
 
-      {/* Progress */}
       <div className="flex items-center gap-2">
         {[1, 2, 3, 4].map((s) => (
           <div
@@ -143,8 +169,7 @@ const CreateCampaign = () => {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step 1: Basics */}
-          {step === 1 && (
+          {step === 1 ? (
             <div className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="name">Campaign Name *</Label>
@@ -163,9 +188,7 @@ const CreateCampaign = () => {
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start">
                         <CalendarIcon className="w-4 h-4 mr-2" />
-                        {formData.startDate
-                          ? format(formData.startDate, 'PPP')
-                          : 'Pick a date'}
+                        {formData.startDate ? format(formData.startDate, 'PPP') : 'Pick a date'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
@@ -185,9 +208,7 @@ const CreateCampaign = () => {
                     <PopoverTrigger asChild>
                       <Button variant="outline" className="w-full justify-start">
                         <CalendarIcon className="w-4 h-4 mr-2" />
-                        {formData.endDate
-                          ? format(formData.endDate, 'PPP')
-                          : 'Pick a date'}
+                        {formData.endDate ? format(formData.endDate, 'PPP') : 'Pick a date'}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
@@ -197,7 +218,7 @@ const CreateCampaign = () => {
                         onSelect={(date) => setFormData({ ...formData, endDate: date })}
                         disabled={(date) =>
                           date < new Date() ||
-                          !!(formData.startDate && date <= formData.startDate)
+                          Boolean(formData.startDate && date <= formData.startDate)
                         }
                       />
                     </PopoverContent>
@@ -205,10 +226,9 @@ const CreateCampaign = () => {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Step 2: Campaign Type */}
-          {step === 2 && (
+          {step === 2 ? (
             <div className="space-y-4">
               {campaignTypes.map((type) => (
                 <div
@@ -234,12 +254,10 @@ const CreateCampaign = () => {
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
 
-          {/* Step 3: Target Audience */}
-          {step === 3 && (
+          {step === 3 ? (
             <div className="space-y-6">
-              {/* Industries */}
               <div>
                 <Label className="flex items-center gap-2 mb-3">
                   <Target className="w-4 h-4" />
@@ -263,11 +281,8 @@ const CreateCampaign = () => {
                 </div>
               </div>
 
-              {/* Locations */}
               <div>
-                <Label className="flex items-center gap-2 mb-3">
-                  Target Locations
-                </Label>
+                <Label className="flex items-center gap-2 mb-3">Target Locations</Label>
                 <div className="flex flex-wrap gap-2">
                   {targetLocations.map((location) => (
                     <Badge
@@ -286,7 +301,6 @@ const CreateCampaign = () => {
                 </div>
               </div>
 
-              {/* User Types */}
               <div>
                 <Label className="flex items-center gap-2 mb-3">
                   <Users className="w-4 h-4" />
@@ -310,10 +324,9 @@ const CreateCampaign = () => {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Step 4: Review */}
-          {step === 4 && (
+          {step === 4 ? (
             <div className="space-y-6">
               <div className="bg-gray-50 rounded-xl p-6 space-y-4">
                 <div className="flex justify-between">
@@ -323,7 +336,7 @@ const CreateCampaign = () => {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Campaign Type</span>
                   <span className="font-medium">
-                    {campaignTypes.find(t => t.value === formData.type)?.label}
+                    {campaignTypes.find((type) => type.value === formData.type)?.label}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -342,6 +355,12 @@ const CreateCampaign = () => {
                 </div>
               </div>
 
+              {submitError ? (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                  {submitError}
+                </div>
+              ) : null}
+
               <div className="text-sm text-gray-500">
                 <p>
                   By launching this campaign, you agree to our{' '}
@@ -356,22 +375,18 @@ const CreateCampaign = () => {
                 </p>
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Navigation Buttons */}
           <div className="flex justify-between pt-4">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={step === 1}
-            >
+            <Button variant="outline" onClick={handleBack} disabled={step === 1}>
               Back
             </Button>
             {step < 4 ? (
               <Button
                 onClick={handleNext}
                 disabled={
-                  (step === 1 && (!formData.name || !formData.startDate || !formData.endDate)) ||
+                  (step === 1 &&
+                    (!formData.name || !formData.startDate || !formData.endDate)) ||
                   (step === 2 && !formData.type)
                 }
                 className="bg-[var(--brand-secondary)] hover:bg-[var(--brand-secondary-dark)]"

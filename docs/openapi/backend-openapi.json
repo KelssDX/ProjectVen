@@ -122,6 +122,233 @@
         ]
       }
     },
+    "/calendar/events": {
+      "get": {
+        "operationId": "CalendarController_getEvents",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      },
+      "post": {
+        "operationId": "CalendarController_createEvent",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/events/{id}": {
+      "patch": {
+        "operationId": "CalendarController_updateEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      },
+      "delete": {
+        "operationId": "CalendarController_deleteEvent",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations": {
+      "get": {
+        "operationId": "CalendarController_getIntegrations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations/{provider}/connect": {
+      "post": {
+        "operationId": "CalendarController_connectIntegration",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations/{provider}/oauth/start": {
+      "post": {
+        "operationId": "CalendarController_beginOauth",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations/{provider}/oauth/complete": {
+      "post": {
+        "operationId": "CalendarController_completeOauth",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations/{provider}/disconnect": {
+      "post": {
+        "operationId": "CalendarController_disconnectIntegration",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/integrations/{provider}/sync": {
+      "post": {
+        "operationId": "CalendarController_syncIntegration",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/webhooks/google": {
+      "post": {
+        "operationId": "CalendarController_googleWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/calendar/webhooks/microsoft": {
+      "post": {
+        "operationId": "CalendarController_microsoftWebhook",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
     "/connections/mine": {
       "get": {
         "operationId": "ConnectionsController_getMine",
@@ -253,6 +480,444 @@
         },
         "tags": [
           "Connections"
+        ]
+      }
+    },
+    "/conversations": {
+      "get": {
+        "operationId": "MessagesController_getConversations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/conversations/{id}/messages": {
+      "get": {
+        "operationId": "MessagesController_getMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      },
+      "post": {
+        "operationId": "MessagesController_createMessage",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/conversations/{id}/read": {
+      "post": {
+        "operationId": "MessagesController_markRead",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
+    "/investments/campaigns": {
+      "get": {
+        "operationId": "InvestmentsController_getCampaigns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Investments"
+        ]
+      }
+    },
+    "/investments/posts/{id}/commitments": {
+      "get": {
+        "operationId": "InvestmentsController_getCommitments",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Investments"
+        ]
+      },
+      "post": {
+        "operationId": "InvestmentsController_createCommitment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Investments"
+        ]
+      }
+    },
+    "/marketing/campaigns": {
+      "get": {
+        "operationId": "MarketingController_getCampaigns",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketing"
+        ]
+      },
+      "post": {
+        "operationId": "MarketingController_createCampaign",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketing"
+        ]
+      }
+    },
+    "/marketing/campaigns/{id}/status": {
+      "post": {
+        "operationId": "MarketingController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketing"
+        ]
+      }
+    },
+    "/marketing/campaigns/{id}/metrics": {
+      "get": {
+        "operationId": "MarketingController_getMetrics",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketing"
+        ]
+      },
+      "post": {
+        "operationId": "MarketingController_ingestMetrics",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketing"
+        ]
+      }
+    },
+    "/marketplace/products": {
+      "get": {
+        "operationId": "MarketplaceController_getProducts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/marketplace/services": {
+      "get": {
+        "operationId": "MarketplaceController_getServices",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/marketplace/posts/{id}/reviews": {
+      "get": {
+        "operationId": "MarketplaceController_getReviews",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      },
+      "post": {
+        "operationId": "MarketplaceController_createReview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/marketplace/products/{id}/orders": {
+      "post": {
+        "operationId": "MarketplaceController_createOrder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/marketplace/services/{id}/bookings": {
+      "post": {
+        "operationId": "MarketplaceController_createBooking",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Marketplace"
+        ]
+      }
+    },
+    "/mentorship/mentors": {
+      "get": {
+        "operationId": "MentorshipController_getMentors",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mentorship"
+        ]
+      }
+    },
+    "/mentorship/requests": {
+      "get": {
+        "operationId": "MentorshipController_getRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mentorship"
+        ]
+      }
+    },
+    "/mentorship/mine": {
+      "get": {
+        "operationId": "MentorshipController_getMine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mentorship"
+        ]
+      }
+    },
+    "/mentorship/posts/{id}/offers": {
+      "post": {
+        "operationId": "MentorshipController_createOffer",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mentorship"
+        ]
+      }
+    },
+    "/mentorship/relationships/{id}/status": {
+      "post": {
+        "operationId": "MentorshipController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Mentorship"
         ]
       }
     },
@@ -460,6 +1125,131 @@
         },
         "tags": [
           "Posts"
+        ]
+      }
+    },
+    "/profiles": {
+      "get": {
+        "operationId": "ProfilesController_getProfiles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/suggestions": {
+      "get": {
+        "operationId": "ProfilesController_getSuggestions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/trending": {
+      "get": {
+        "operationId": "ProfilesController_getTrending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/me": {
+      "put": {
+        "operationId": "ProfilesController_upsertMyProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/{id}/similar": {
+      "get": {
+        "operationId": "ProfilesController_getSimilarProfiles",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/{id}/views": {
+      "post": {
+        "operationId": "ProfilesController_incrementViews",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
+        ]
+      }
+    },
+    "/profiles/{id}": {
+      "get": {
+        "operationId": "ProfilesController_getProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Profiles"
         ]
       }
     }

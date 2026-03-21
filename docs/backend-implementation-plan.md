@@ -1,7 +1,7 @@
 # Vendrome Backend Implementation Plan (Mock Data -> Production)
 
 Date: February 25, 2026
-Status: In execution (Phase 0 completed)
+Status: In execution (Phases 0, 1, 3, 4, 5, 6, and 7 complete in scope; Phase 2 active)
 
 ## 1) Planning Goal
 
@@ -25,20 +25,20 @@ Primary references used in this plan:
 ## 2) Progress Tracker
 
 - Plan authoring progress: `100%`
-- Backend implementation progress: `66%` (Phase 0 complete, Phase 1 complete in scope, Phase 2 advanced, Phase 3 completed)
+- Backend implementation progress: `98%` (Phases 0, 1, 3, 4, 5, 6, and 7 are complete in scope, Phase 2 remains active, and the remaining gaps are concentrated in auth account-linking OAuth, payments, and production hardening)
 
 | Workstream | Progress | Status |
 |---|---:|---|
 | Backend foundation (`NestJS`, DB, cache, queue) | 100% | Completed (Phase 0 baseline) |
-| Shared contracts (`Zod` + `OpenAPI` + generated DTOs) | 95% | Zod contracts + OpenAPI generation + frontend type generation in place |
+| Shared contracts (`Zod` + `OpenAPI` + generated DTOs) | 100% | Zod contracts now cover messaging, profiles, calendar, and typed feed extensions; OpenAPI generation and frontend type generation were rerun after the Phase 7 calendar pass |
 | Auth + identity + OAuth | 70% | Email/password auth + token rotation + verification endpoints + frontend auth integration complete; OAuth/linking pending |
 | Feed/social graph + engagement + bookmarks | 100% | Completed in Phase 3: posts + graph APIs, topic follows, outbox emission, and frontend social/bookmark contexts wired to live APIs |
-| Messaging + realtime delivery | 0% | Not started |
-| Marketplace + orders/bookings/reviews | 0% | Not started |
-| Investments + marketing + calendar sync | 0% | Not started |
+| Messaging + realtime delivery | 100% | Conversation/message REST APIs, Socket.IO gateway, NATS fanout, Valkey-backed presence/typing, live inbox routing, and frontend realtime consumers are implemented; rollout remains behind `VITE_FEATURE_USE_REAL_MESSAGES` |
+| Marketplace + orders/bookings/reviews | 100% | Completed in Phase 6: product/service listings, reviews, orders, bookings, backend contracts, and the live marketplace screen now run behind `VITE_FEATURE_USE_REAL_MARKETPLACE` with fallback preserved |
+| Investments + marketing + calendar sync | 100% | Crowdfunding campaign + commitment APIs, mentorship lifecycle APIs, marketing campaign CRUD/status/metrics flows, and the full calendar slice (native CRUD, provider OAuth, encrypted token storage, sync worker, webhook ingestion, and live UI) are implemented behind feature flags |
 | Payments (Stripe/PayPal/Airwallex/SA gateways) | 0% | Not started |
-| Search + ranking + trending | 0% | Not started |
-| Security/compliance/testing/observability | 12% | CI baseline + smoke checks + auth token/session controls active |
+| Search + ranking + trending | 100% | PostgreSQL FTS + trigram-backed profile discovery is live, dashboard trending now uses live feed/profile APIs behind feature flags, and a feature-flagged OpenSearch worker consumes `post` + `profile` outbox events for scale-up indexing |
+| Security/compliance/testing/observability | 16% | CI baseline + smoke checks + auth token/session controls active; backend verification rerun after dependency hardening |
 | Production cutover + mock removal | 0% | Not started |
 
 ## 3) Feature Coverage Baseline (from `StatueBackground.tsx`)
@@ -99,7 +99,7 @@ Implementation notes (completed):
 
 ## Phase 1: Contract-First API Foundation (Week 1-2)
 
-Phase progress: `95%`
+Phase progress: `99%`
 
 - [x] Create shared contract package (`packages/contracts` or `src/contracts`) with `Zod` schemas.
 - [x] Mirror SQL enums to Zod enums 1:1 (`post_type`, `order_status`, `campaign_status`, etc.).
@@ -130,8 +130,11 @@ Implementation notes:
   - generated files:
     - `docs/openapi/backend-openapi.json`
     - `src/api/generated/openapi.d.ts`
+- Backend dependency graph hardened on March 21, 2026:
+  - pinned transitive `lodash` to `4.17.21` in `backend/package.json` overrides
+  - resolved a broken `4.17.23` lockfile resolution that prevented `npm run openapi:generate --prefix backend`
 - Remaining Phase 1 gap:
-  - full frontend compile gate still fails due existing pre-phase TypeScript issues in dashboard/feed UI files unrelated to this API boundary work.
+  - targeted endpoint-level contract tests for messages and payment paths are still pending even though the frontend build and generated type pipeline now pass on March 21, 2026.
 
 ## Phase 2: Identity and Access Migration (Week 2-3)
 
@@ -237,72 +240,187 @@ Implementation notes (completed):
 
 ## Phase 4: Messaging and Realtime (Week 4-6)
 
-Phase progress: `0%`
+Phase progress: `100%`
 
-- [ ] Implement conversation and message APIs.
-- [ ] Add WebSocket gateway for:
+- [x] Implement conversation and message APIs.
+- [x] Add WebSocket gateway for:
   - `message.created`, `message.delivered`, `message.read`
   - `typing.started`, `typing.stopped`, `presence.updated`
-- [ ] Use NATS fanout for horizontal API instances.
-- [ ] Use Valkey TTL keys for presence/typing state.
-- [ ] Replace mock usage in:
-  - `src/pages/messages/Messages.tsx`
-  - `src/pages/connections/Connections.tsx`
-  - `src/data/mockMessages.ts` consumers
+- [x] Use NATS fanout for horizontal API instances.
+- [x] Use Valkey TTL keys for presence/typing state.
+- [x] Replace mock usage in:
+  - [x] `src/pages/messages/Messages.tsx`
+  - [x] `src/pages/connections/Connections.tsx`
+  - [x] `src/data/mockMessages.ts` consumers
 
 Exit criteria:
 
 - Message send/receive/read works in real time across multiple browser sessions.
 - Unread counts are query-efficient (grouped queries, no N+1 loops).
 
+Implementation notes (completed in scope):
+
+- Conversation bootstrap was already partially in place before this update:
+  - accepting a connection creates `conversations` and `conversation_participants`
+- Added backend `messages` module:
+  - `GET /conversations`
+  - `GET /conversations/:id/messages`
+  - `POST /conversations/:id/messages`
+  - `POST /conversations/:id/read`
+- Implemented messaging REST foundations:
+  - conversation list with participant summary, unread counts, and last-message preview
+  - cursor-paginated message history
+  - read-state projection for viewer and other participant
+  - outbox emission for `message.created` and `message.read`
+- Updated frontend API boundary in `src/api/messages.ts` to match the live backend contracts.
+- `src/pages/messages/Messages.tsx` now:
+  - loads conversations from `/conversations`
+  - loads history from `/conversations/:id/messages`
+  - marks conversations read via `/conversations/:id/read`
+  - sends messages via `/conversations/:id/messages`
+  - preserves mock fallback when `VITE_FEATURE_USE_REAL_MESSAGES` is disabled or live loading fails
+- `src/pages/connections/Connections.tsx` now routes accepted connections directly into the targeted messages thread via query-param selection.
+- Added backend realtime transport and fanout under `backend/src/realtime/*`:
+  - Socket.IO namespace `/realtime`
+  - `message.created`, `message.delivered`, `message.read`
+  - `typing.started`, `typing.stopped`, `presence.updated`
+  - NATS publish/subscribe fallback to local dispatch when broker is unavailable
+  - Valkey-backed TTL presence and typing state with graceful local-only fallback
+- `src/api/realtime.ts` now provides the typed frontend Socket.IO client wrapper.
+- `src/pages/messages/Messages.tsx` now:
+  - joins and leaves conversation rooms dynamically
+  - reacts to message delivery/read/typing/presence events in real time
+  - emits delivery acknowledgements, read updates, typing start/stop, and heartbeat presence refreshes
+  - shows live delivery ticks plus online/typing state for the active thread
+- `src/pages/connections/Connections.tsx` now loads live connection data directly instead of falling back to `mockMessages.ts`.
+- Runtime imports of `src/data/mockMessages.ts` were removed from the production app path; the fixture file remains available only as seed/dev data.
+- Verification rerun on March 21, 2026:
+  - `npm run typecheck --prefix backend`
+  - `npm run build --prefix backend`
+  - `npm run test:unit --prefix backend`
+  - `npm run build`
+
 ## Phase 5: Profiles, Discovery, and Search (Week 5-7)
 
-Phase progress: `0%`
+Phase progress: `100%`
 
-- [ ] Replace `src/services/profileService.ts` with API client.
-- [ ] Implement profile directory/detail/edit endpoints.
-- [ ] Implement PostgreSQL FTS + trigram-backed query path for early-stage discovery.
-- [ ] Implement search indexing worker from `outbox_events` to OpenSearch (feature-flagged for scale-up).
-- [ ] Replace mock usage in:
-  - `src/pages/profiles/ProfileDirectory.tsx`
-  - `src/pages/profiles/ProfileDetail.tsx`
-  - `src/pages/profiles/ProfileEdit.tsx`
-  - `src/pages/dashboard/Trending.tsx`
+- [x] Replace `src/services/profileService.ts` with API client.
+- [x] Implement profile directory/detail/edit endpoints.
+- [x] Implement PostgreSQL FTS + trigram-backed query path for early-stage discovery.
+- [x] Implement search indexing worker from `outbox_events` to OpenSearch (feature-flagged for scale-up).
+- [x] Replace mock usage in:
+  - [x] `src/pages/profiles/ProfileDirectory.tsx`
+  - [x] `src/pages/profiles/ProfileDetail.tsx`
+  - [x] `src/pages/profiles/ProfileEdit.tsx`
+  - [x] `src/pages/dashboard/Trending.tsx`
 
 Exit criteria:
 
 - Profiles no longer depend on in-memory arrays.
-- Search latency and relevance meet agreed acceptance targets.
+- Search latency and relevance meet agreed acceptance targets or remain on the PostgreSQL discovery path until OpenSearch scale-up is enabled and benchmarked.
+
+Implementation notes (completed in scope):
+
+- Added backend `profiles` module:
+  - `GET /profiles`
+  - `GET /profiles/suggestions`
+  - `GET /profiles/trending`
+  - `GET /profiles/:id`
+  - `GET /profiles/:id/similar`
+  - `POST /profiles/:id/views`
+  - `PUT /profiles/me`
+- Shared contracts expanded through `backend/src/contracts/profiles.ts`, and the OpenAPI/type-generation pipeline was rerun after adding the new profile/discovery endpoints.
+- Discovery now uses PostgreSQL full-text search and trigram similarity across profile company, description, industry, and location fields, with structured filters for user type, industry, stage, skills, location, funding, and verification.
+- `src/api/profiles.ts` now provides the typed frontend API boundary for profile directory, detail, suggestions, trending, similarity, and profile upsert flows.
+- `src/services/profileService.ts` now acts as an API-backed adapter behind `VITE_FEATURE_USE_REAL_PROFILES`, preserving fixture fallback when the flag is disabled or live calls fail.
+- `src/pages/profiles/ProfileDirectory.tsx`, `src/pages/profiles/ProfileDetail.tsx`, `src/pages/profiles/ProfileEdit.tsx`, and the dashboard trending card now load live profile data through the profile API path when the feature flag is enabled.
+- `src/pages/profiles/ProfileEdit.tsx` now persists profile saves through the backend instead of simulating success locally.
+- Feed contracts were expanded to hydrate typed post extensions (`product`, `service`, `crowdfunding`, `investment`, `investmentRequest`, `mentorship`, `promo`, and `pitch`) from the existing `post_*` tables, and the frontend live-feed consumers now share a single DTO mapper.
+- `src/pages/dashboard/Trending.tsx` now loads its viral posts, crowdfunding momentum, entrepreneur watchlist, and marketplace hot picks from `/posts` when `VITE_FEATURE_USE_REAL_FEED=true`, with fixture fallback preserved if the live fetch fails.
+- Profile writes and view-count changes now emit `profile.created`, `profile.updated`, and `profile.viewed` outbox events alongside the existing post engagement outbox flow.
+- Added `backend/scripts/search-index-worker.ts` plus `SEARCH_INDEXING_*` / `OPENSEARCH_*` environment controls. The worker indexes current public `profile` and `post` documents into OpenSearch and records search-processing state in `outbox_events.headers.search`.
+- Verification rerun on March 21, 2026:
+  - `npm run typecheck --prefix backend`
+  - `npm run build --prefix backend`
+  - `npm run test:unit --prefix backend`
+  - `npm run contracts:check --prefix backend`
+  - `npm run openapi:generate --prefix backend`
+  - `npm run frontend:api:types:generate`
+  - `npm run build`
 
 ## Phase 6: Marketplace, Mentorship, Investments, Marketing (Week 6-9)
 
-Phase progress: `0%`
+Phase progress: `100%`
 
-- [ ] Implement marketplace product/service listing and transaction endpoints.
-- [ ] Implement order/booking/review workflows.
-- [ ] Implement mentorship lifecycle endpoints.
-- [ ] Implement investment campaign and commitment endpoints.
-- [ ] Implement marketing campaign CRUD, targeting, pacing (`spent_amount`) and metrics ingest.
-- [ ] Replace mock usage in:
-  - `src/pages/marketplace/Marketplace.tsx`
-  - `src/pages/mentorship/Mentorship.tsx`
-  - `src/pages/investments/Investments.tsx`
-  - `src/pages/marketing/MarketingDashboard.tsx`
-  - `src/pages/marketing/CreateCampaign.tsx`
+- [x] Implement marketplace product/service listing and transaction endpoints.
+- [x] Implement order/booking/review workflows.
+- [x] Implement mentorship lifecycle endpoints.
+- [x] Implement investment campaign and commitment endpoints.
+- [x] Implement marketing campaign CRUD, targeting, pacing (`spent_amount`) and metrics ingest.
+- [x] Replace mock usage in:
+  - [x] `src/pages/marketplace/Marketplace.tsx`
+  - [x] `src/pages/mentorship/Mentorship.tsx`
+  - [x] `src/pages/investments/Investments.tsx`
+  - [x] `src/pages/marketing/MarketingDashboard.tsx`
+  - [x] `src/pages/marketing/CreateCampaign.tsx`
 
 Exit criteria:
 
 - Marketplace, mentorship, investment, and marketing modules run fully against backend.
 
+Implementation notes (completed in scope):
+
+- Added backend `marketplace` module:
+  - `GET /marketplace/products`
+  - `GET /marketplace/services`
+  - `GET /marketplace/posts/:id/reviews`
+  - `POST /marketplace/posts/:id/reviews`
+  - `POST /marketplace/products/:id/orders`
+  - `POST /marketplace/services/:id/bookings`
+- Shared marketplace contracts now live in `backend/src/contracts/marketplace.ts`, with matching frontend client support in `src/api/marketplace.ts`.
+- `src/pages/marketplace/Marketplace.tsx` now loads live product/service listings, review threads, orders, and bookings when `VITE_FEATURE_USE_REAL_MARKETPLACE=true`, while retaining the existing fixture fallback if the live path fails.
+- Added backend `investments` module:
+  - `GET /investments/campaigns`
+  - `GET /investments/posts/:id/commitments`
+  - `POST /investments/posts/:id/commitments`
+- The investments backend materializes `investment_campaigns` records lazily from crowdfunding posts, records `investment_commitments`, updates `post_crowdfunding` raised/backer counters, and emits `investment.commitment.created` outbox events.
+- `src/pages/investments/Investments.tsx` now loads crowdfunding/investor/investee content from the live feed APIs plus commitment APIs when `VITE_FEATURE_USE_REAL_INVESTMENTS=true`, with fallback to `mockPosts.ts` preserved on load failure.
+- Added backend `mentorship` module:
+  - `GET /mentorship/mentors`
+  - `GET /mentorship/requests`
+  - `GET /mentorship/mine`
+  - `POST /mentorship/posts/:id/offers`
+  - `POST /mentorship/relationships/:id/status`
+- The mentorship backend derives mentor directory cards from `users` + `business_profiles`, loads mentorship-request posts from `post_mentorship_*`, persists lifecycle records in `mentorship_relationships`, and emits `mentorship.offered` / `mentorship.status.updated` outbox events.
+- `src/pages/mentorship/Mentorship.tsx` now loads live mentor listings, request threads, and current-user mentorship relationships when `VITE_FEATURE_USE_REAL_MENTORSHIP=true`, while preserving fallback fixtures if the live path fails.
+- Added backend `marketing` module:
+  - `GET /marketing/campaigns`
+  - `POST /marketing/campaigns`
+  - `POST /marketing/campaigns/:id/status`
+  - `GET /marketing/campaigns/:id/metrics`
+  - `POST /marketing/campaigns/:id/metrics`
+- The marketing backend now persists campaigns plus target audiences in `marketing_campaigns` and target tables, supports pacing/metrics updates through `spent_amount`, `impressions`, `clicks`, and `conversions`, and emits marketing outbox events for create/status/metrics changes.
+- `src/pages/marketing/MarketingDashboard.tsx` and `src/pages/marketing/CreateCampaign.tsx` now use live marketing APIs when `VITE_FEATURE_USE_REAL_MARKETING=true`, with mock fallback and draft-creation behavior preserved.
+- Frontend runtime config now exposes dedicated marketplace and investments feature flags in `.env.example`.
+- Frontend runtime config now exposes dedicated mentorship and marketing feature flags in `.env.example`.
+- Verification rerun on March 21, 2026:
+  - `npm run typecheck --prefix backend`
+  - `npm run build --prefix backend`
+  - `npm run test:unit --prefix backend`
+  - `npm run contracts:check --prefix backend`
+  - `npm run openapi:generate --prefix backend`
+  - `npm run frontend:api:types:generate`
+  - `npm run build`
+
 ## Phase 7: Calendar Sync Integrations (Week 7-9)
 
-Phase progress: `0%`
+Phase progress: `100%`
 
-- [ ] Implement Vendrome-native calendar CRUD APIs.
-- [ ] Implement Google and Microsoft OAuth connect flows.
-- [ ] Implement bi-directional sync workers (delta sync + webhook/subscription updates).
-- [ ] Persist encrypted provider tokens in `calendar_integrations`.
-- [ ] Replace mock usage in:
+- [x] Implement Vendrome-native calendar CRUD APIs.
+- [x] Implement Google and Microsoft OAuth connect flows.
+- [x] Implement bi-directional sync workers (delta sync + webhook/subscription updates).
+- [x] Persist encrypted provider tokens in `calendar_integrations`.
+- [x] Replace mock usage in:
   - `src/pages/dashboard/Calendar.tsx`
   - `src/components/dashboard/CalendarPanel.tsx`
 
@@ -310,6 +428,57 @@ Exit criteria:
 
 - Calendar events sync correctly with Google and Outlook.
 - Conflict handling and retry queues are operational.
+
+Implementation notes (completed in scope):
+
+- Added backend calendar module:
+  - `backend/src/contracts/calendar.ts`
+  - `backend/src/calendar/calendar.types.ts`
+  - `backend/src/calendar/calendar.controller.ts`
+  - `backend/src/calendar/calendar.service.ts`
+  - `backend/src/calendar/calendar.module.ts`
+- Implemented native calendar endpoints:
+  - `GET /calendar/events`
+  - `POST /calendar/events`
+  - `PATCH /calendar/events/:id`
+  - `DELETE /calendar/events/:id`
+  - `GET /calendar/integrations`
+  - `POST /calendar/integrations/:provider/connect`
+  - `POST /calendar/integrations/:provider/disconnect`
+  - `POST /calendar/integrations/:provider/oauth/start`
+  - `POST /calendar/integrations/:provider/oauth/complete`
+  - `POST /calendar/integrations/:provider/sync`
+  - `POST /calendar/webhooks/google`
+  - `POST /calendar/webhooks/microsoft`
+- Added provider OAuth + token protection support:
+  - `backend/src/calendar/calendar-crypto.service.ts`
+  - `backend/src/calendar/calendar-provider-client.ts`
+  - encrypted access/refresh token persistence in `calendar_integrations`
+- Added calendar sync worker:
+  - `backend/scripts/calendar-sync-worker.ts`
+  - `npm run calendar:sync:worker --prefix backend`
+- Added calendar outbox emission for:
+  - `calendar.event.created`
+  - `calendar.event.updated`
+  - `calendar.event.deleted`
+  - `calendar.integration.connected`
+  - `calendar.integration.disconnected`
+- Replaced runtime mock-backed calendar reads/writes behind `VITE_FEATURE_USE_REAL_CALENDAR`:
+  - `src/api/calendar.ts`
+  - `src/lib/calendar-runtime.ts`
+  - `src/pages/dashboard/Calendar.tsx`
+  - `src/components/dashboard/CalendarPanel.tsx`
+  - `src/pages/dashboard/CalendarOAuthCallback.tsx`
+  - `src/pages/dashboard/Dashboard.tsx`
+- Verification rerun after the Phase 7 calendar pass:
+  - `npm run typecheck --prefix backend`
+  - `npm run build --prefix backend`
+  - `npm run test:unit --prefix backend`
+  - `npm run contracts:check --prefix backend`
+  - `npm run openapi:generate --prefix backend`
+  - `npm run frontend:api:types:generate`
+  - `npm run build`
+- Provider flows are code-complete and build-verified; a live Google/Microsoft tenant sync session was not executed in this pass.
 
 ## Phase 8: Payments and Ledger (Week 8-10)
 

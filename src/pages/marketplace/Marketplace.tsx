@@ -1,5 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  marketplaceApi,
+  type MarketplaceProductListingDto,
+  type MarketplaceReviewDto,
+  type MarketplaceReviewSummaryDto,
+  type MarketplaceServiceListingDto,
+} from '@/api/marketplace';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +37,9 @@ import {
   Star,
 } from 'lucide-react';
 
+const USE_REAL_MARKETPLACE =
+  import.meta.env.VITE_FEATURE_USE_REAL_MARKETPLACE === 'true';
+
 interface VenReview {
   id: string;
   reviewer: string;
@@ -53,6 +63,66 @@ interface ReviewSummary {
   verifiedCount: number;
 }
 
+interface MarketplaceDisplayPost {
+  id: string;
+  userId: string;
+  author: {
+    name: string;
+    company: string;
+    avatar?: string;
+    userType?: string;
+  };
+  media?: Array<{ url: string }>;
+  createdAt: Date;
+  bookmarks?: number;
+}
+
+type MarketplaceProductCardModel = Product & { post: MarketplaceDisplayPost };
+type MarketplaceServiceCardModel = Service & { post: MarketplaceDisplayPost };
+
+const initialReviews: Record<string, VenReview[]> = {
+  '1': [
+    {
+      id: 'rev-1',
+      reviewer: 'Alicia Green',
+      reviewerAvatar: '/avatar-2.jpg',
+      rating: 5,
+      comment: 'Huge time saver for our reporting. Support team was responsive.',
+      verifiedPurchase: true,
+      createdAt: new Date('2026-01-10T10:00:00'),
+    },
+    {
+      id: 'rev-2',
+      reviewer: 'Marcus Lee',
+      reviewerAvatar: '/avatar-3.jpg',
+      rating: 4,
+      comment: 'Strong analytics, would love more export formats.',
+      verifiedPurchase: false,
+      createdAt: new Date('2026-01-22T14:30:00'),
+    },
+  ],
+  '4': [
+    {
+      id: 'rev-3',
+      reviewer: 'Nora Patel',
+      reviewerAvatar: '/avatar-4.jpg',
+      rating: 5,
+      comment: 'Delivered ahead of schedule and the UI is beautiful.',
+      verifiedPurchase: true,
+      createdAt: new Date('2026-01-18T09:15:00'),
+    },
+    {
+      id: 'rev-4',
+      reviewer: 'Samuel Wright',
+      reviewerAvatar: '/avatar-1.jpg',
+      rating: 4,
+      comment: 'Great collaboration and clear milestones.',
+      verifiedPurchase: true,
+      createdAt: new Date('2026-01-25T16:40:00'),
+    },
+  ],
+};
+
 const getSellerBadgeLabel = (userType?: string) => {
   switch (userType) {
     case 'entrepreneur':
@@ -68,107 +138,283 @@ const getSellerBadgeLabel = (userType?: string) => {
   }
 };
 
+const computeReviewSummary = (reviews: VenReview[]): ReviewSummary => {
+  const count = reviews.length;
+  if (count === 0) {
+    return { average: 0, count: 0, verifiedCount: 0 };
+  }
+
+  const total = reviews.reduce((sum, review) => sum + review.rating, 0);
+  const verifiedCount = reviews.filter((review) => review.verifiedPurchase).length;
+  return {
+    average: Number((total / count).toFixed(1)),
+    count,
+    verifiedCount,
+  };
+};
+
+const buildInitialReviewSummaryMap = (): Record<string, ReviewSummary> =>
+  Object.fromEntries(
+    Object.entries(initialReviews).map(([postId, reviews]) => [
+      postId,
+      computeReviewSummary(reviews),
+    ]),
+  );
+
+const mapApiReviewSummary = (
+  summary: MarketplaceReviewSummaryDto,
+): ReviewSummary => ({
+  average: summary.average,
+  count: summary.count,
+  verifiedCount: summary.verifiedCount,
+});
+
+const mapApiReview = (review: MarketplaceReviewDto): VenReview => ({
+  id: review.id,
+  reviewer: review.reviewerName,
+  reviewerAvatar: review.reviewerAvatar ?? undefined,
+  rating: review.rating,
+  comment: review.comment,
+  verifiedPurchase: review.verifiedPurchase,
+  createdAt: new Date(review.createdAt),
+});
+
+const mapListingPost = (
+  listing:
+    | MarketplaceProductListingDto
+    | MarketplaceServiceListingDto,
+): MarketplaceDisplayPost => ({
+  id: listing.postId,
+  userId: listing.seller.userId,
+  author: {
+    name: listing.seller.name,
+    company: listing.seller.company,
+    avatar: listing.seller.avatar ?? undefined,
+    userType: listing.seller.userType,
+  },
+  media: listing.primaryImageUrl ? [{ url: listing.primaryImageUrl }] : undefined,
+  createdAt: new Date(listing.createdAt),
+  bookmarks: listing.bookmarks,
+});
+
+const mapProductListingToCard = (
+  listing: MarketplaceProductListingDto,
+): MarketplaceProductCardModel => ({
+  ...listing.product,
+  post: mapListingPost(listing),
+});
+
+const mapServiceListingToCard = (
+  listing: MarketplaceServiceListingDto,
+): MarketplaceServiceCardModel => ({
+  ...listing.service,
+  post: mapListingPost(listing),
+});
+
+const getMockProducts = (): MarketplaceProductCardModel[] =>
+  mockPosts
+    .filter((post) => post.type === 'product' && post.product)
+    .map((post) => ({ ...post.product!, post }));
+
+const getMockServices = (): MarketplaceServiceCardModel[] =>
+  mockPosts
+    .filter((post) => post.type === 'service' && post.service)
+    .map((post) => ({ ...post.service!, post }));
+
 const Marketplace = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedItem, setSelectedItem] = useState<{ type: 'product' | 'service'; data: Product | Service; post: any } | null>(null);
+  const [selectedItem, setSelectedItem] = useState<{
+    type: 'product' | 'service';
+    data: Product | Service;
+    post: MarketplaceDisplayPost;
+  } | null>(null);
   const [isOrderDialogOpen, setIsOrderDialogOpen] = useState(false);
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewComment, setReviewComment] = useState('');
   const [reviewVerifiedPurchase, setReviewVerifiedPurchase] = useState(false);
+  const [products, setProducts] = useState<MarketplaceProductCardModel[]>(() =>
+    getMockProducts(),
+  );
+  const [services, setServices] = useState<MarketplaceServiceCardModel[]>(() =>
+    getMockServices(),
+  );
+  const [isLoading, setIsLoading] = useState(USE_REAL_MARKETPLACE);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [isSavingReview, setIsSavingReview] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
+  const [orderQuantity, setOrderQuantity] = useState('1');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
+  const [serviceDate, setServiceDate] = useState('');
+  const [serviceTime, setServiceTime] = useState('09:00');
+  const [serviceNotes, setServiceNotes] = useState('');
   const { openPanel } = useCalendarPanel();
-  const [venReviews, setVenReviews] = useState<Record<string, VenReview[]>>({
-    '1': [
-      {
-        id: 'rev-1',
-        reviewer: 'Alicia Green',
-        reviewerAvatar: '/avatar-2.jpg',
-        rating: 5,
-        comment: 'Huge time saver for our reporting. Support team was responsive.',
-        verifiedPurchase: true,
-        createdAt: new Date('2026-01-10T10:00:00'),
-      },
-      {
-        id: 'rev-2',
-        reviewer: 'Marcus Lee',
-        reviewerAvatar: '/avatar-3.jpg',
-        rating: 4,
-        comment: 'Strong analytics, would love more export formats.',
-        verifiedPurchase: false,
-        createdAt: new Date('2026-01-22T14:30:00'),
-      },
-    ],
-    '4': [
-      {
-        id: 'rev-3',
-        reviewer: 'Nora Patel',
-        reviewerAvatar: '/avatar-4.jpg',
-        rating: 5,
-        comment: 'Delivered ahead of schedule and the UI is beautiful.',
-        verifiedPurchase: true,
-        createdAt: new Date('2026-01-18T09:15:00'),
-      },
-      {
-        id: 'rev-4',
-        reviewer: 'Samuel Wright',
-        reviewerAvatar: '/avatar-1.jpg',
-        rating: 4,
-        comment: 'Great collaboration and clear milestones.',
-        verifiedPurchase: true,
-        createdAt: new Date('2026-01-25T16:40:00'),
-      },
-    ],
-  });
+  const [venReviews, setVenReviews] =
+    useState<Record<string, VenReview[]>>(initialReviews);
+  const [reviewSummaries, setReviewSummaries] = useState<
+    Record<string, ReviewSummary>
+  >(() => buildInitialReviewSummaryMap());
 
-  const products = mockPosts
-    .filter(p => p.type === 'product' && p.product)
-    .map(p => ({ ...p.product!, post: p }));
-
-  const services = mockPosts
-    .filter(p => p.type === 'service' && p.service)
-    .map(p => ({ ...p.service!, post: p }));
-
-  const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const filteredServices = services.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || s.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-  const getReviewSummary = (postId: string): ReviewSummary => {
-    const reviews = venReviews[postId] || [];
-    const count = reviews.length;
-    if (count === 0) {
-      return { average: 0, count: 0, verifiedCount: 0 };
+  useEffect(() => {
+    if (!USE_REAL_MARKETPLACE) {
+      return;
     }
-    const total = reviews.reduce((sum, review) => sum + review.rating, 0);
-    const verifiedCount = reviews.filter((review) => review.verifiedPurchase).length;
-    return {
-      average: Number((total / count).toFixed(1)),
-      count,
-      verifiedCount,
-    };
-  };
 
-  const openReviewDialog = (target: ReviewTarget) => {
+    let cancelled = false;
+
+    const loadMarketplace = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const [{ data: productData }, { data: serviceData }] = await Promise.all([
+          marketplaceApi.getProducts({ limit: 100 }),
+          marketplaceApi.getServices({ limit: 100 }),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setProducts(productData.items.map(mapProductListingToCard));
+        setServices(serviceData.items.map(mapServiceListingToCard));
+        setReviewSummaries({
+          ...Object.fromEntries(
+            productData.items.map((item) => [
+              item.postId,
+              mapApiReviewSummary(item.reviewSummary),
+            ]),
+          ),
+          ...Object.fromEntries(
+            serviceData.items.map((item) => [
+              item.postId,
+              mapApiReviewSummary(item.reviewSummary),
+            ]),
+          ),
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error('Failed to load marketplace from API:', error);
+        setLoadError('Unable to load live marketplace. Showing fallback data.');
+        setProducts(getMockProducts());
+        setServices(getMockServices());
+        setReviewSummaries(buildInitialReviewSummaryMap());
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadMarketplace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((product) => {
+        const matchesSearch =
+          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          product.description.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory =
+          selectedCategory === 'all' || product.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      }),
+    [products, searchQuery, selectedCategory],
+  );
+
+  const filteredServices = useMemo(
+    () =>
+      services.filter((service) => {
+        const matchesSearch =
+          service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          service.description.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory =
+          selectedCategory === 'all' || service.category === selectedCategory;
+        return matchesSearch && matchesCategory;
+      }),
+    [services, searchQuery, selectedCategory],
+  );
+
+  const getReviewSummary = (postId: string): ReviewSummary =>
+    reviewSummaries[postId] ?? { average: 0, count: 0, verifiedCount: 0 };
+
+  const openReviewDialog = async (target: ReviewTarget) => {
     setReviewTarget(target);
     setReviewRating(0);
     setReviewComment('');
     setReviewVerifiedPurchase(false);
+    setReviewError(null);
     setIsReviewDialogOpen(true);
+    if (!USE_REAL_MARKETPLACE) {
+      return;
+    }
+
+    setIsReviewLoading(true);
+    try {
+      const { data } = await marketplaceApi.getReviews(target.postId, 20);
+      setVenReviews((previous) => ({
+        ...previous,
+        [target.postId]: data.items.map(mapApiReview),
+      }));
+    } catch (error) {
+      console.error('Failed to load marketplace reviews:', error);
+      setReviewError('Could not load live reviews right now.');
+    } finally {
+      setIsReviewLoading(false);
+    }
   };
 
-  const handleSubmitReview = () => {
+  const handleSubmitReview = async () => {
     if (!reviewTarget || reviewRating === 0 || !reviewComment.trim()) return;
+
+    if (USE_REAL_MARKETPLACE) {
+      setIsSavingReview(true);
+      setReviewError(null);
+      try {
+        const { data } = await marketplaceApi.createReview(reviewTarget.postId, {
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+          verifiedPurchase: reviewVerifiedPurchase,
+        });
+
+        setVenReviews((previous) => ({
+          ...previous,
+          [reviewTarget.postId]: [
+            mapApiReview(data.review),
+            ...(previous[reviewTarget.postId] || []).filter(
+              (review) => review.id !== data.review.id,
+            ),
+          ],
+        }));
+        setReviewSummaries((previous) => ({
+          ...previous,
+          [reviewTarget.postId]: mapApiReviewSummary(data.summary),
+        }));
+        setReviewRating(0);
+        setReviewComment('');
+        setReviewVerifiedPurchase(false);
+        setIsReviewDialogOpen(false);
+      } catch (error) {
+        console.error('Failed to save review:', error);
+        setReviewError('Failed to submit review.');
+      } finally {
+        setIsSavingReview(false);
+      }
+
+      return;
+    }
 
     const newReview: VenReview = {
       id: `rev-${Date.now()}`,
@@ -180,23 +426,98 @@ const Marketplace = () => {
       createdAt: new Date(),
     };
 
-    setVenReviews((prev) => ({
-      ...prev,
-      [reviewTarget.postId]: [newReview, ...(prev[reviewTarget.postId] || [])],
+    const nextReviews = [newReview, ...(venReviews[reviewTarget.postId] || [])];
+    setVenReviews((previous) => ({
+      ...previous,
+      [reviewTarget.postId]: nextReviews,
     }));
-
+    setReviewSummaries((previous) => ({
+      ...previous,
+      [reviewTarget.postId]: computeReviewSummary(nextReviews),
+    }));
     setReviewRating(0);
     setReviewComment('');
     setReviewVerifiedPurchase(false);
     setIsReviewDialogOpen(false);
   };
 
-  const handleOrder = (type: 'product' | 'service', data: Product | Service, post: any) => {
+  const handleOrder = (
+    type: 'product' | 'service',
+    data: Product | Service,
+    post: MarketplaceDisplayPost,
+  ) => {
     if (type === 'service') {
       openPanel();
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setServiceDate(tomorrow.toISOString().slice(0, 10));
+      setServiceTime('09:00');
+      setServiceNotes('');
+    } else {
+      setOrderQuantity('1');
+      setDeliveryAddress('');
+      setOrderNotes('');
     }
+
+    setOrderError(null);
     setSelectedItem({ type, data, post });
     setIsOrderDialogOpen(true);
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!selectedItem) {
+      return;
+    }
+
+    if (USE_REAL_MARKETPLACE) {
+      setIsSubmittingOrder(true);
+      setOrderError(null);
+      try {
+        if (selectedItem.type === 'product') {
+          const quantity = Math.max(1, Number(orderQuantity) || 1);
+          await marketplaceApi.createOrder(selectedItem.post.id, {
+            quantity,
+            deliveryAddress: deliveryAddress.trim() || undefined,
+            notes: orderNotes.trim() || undefined,
+          });
+        } else {
+          if (!serviceDate || !serviceTime) {
+            setOrderError('Please select a preferred date and time.');
+            return;
+          }
+
+          const startAt = new Date(`${serviceDate}T${serviceTime}`);
+          if (Number.isNaN(startAt.getTime())) {
+            setOrderError('Please provide a valid booking date and time.');
+            return;
+          }
+
+          await marketplaceApi.createBooking(selectedItem.post.id, {
+            startAt: startAt.toISOString(),
+            notes: serviceNotes.trim() || undefined,
+          });
+        }
+
+        setIsOrderDialogOpen(false);
+        alert(
+          `${selectedItem.type === 'product' ? 'Order' : 'Booking'} placed successfully!`,
+        );
+      } catch (error) {
+        console.error('Failed to submit marketplace action:', error);
+        setOrderError(
+          `Failed to ${selectedItem.type === 'product' ? 'place order' : 'create booking'}.`,
+        );
+      } finally {
+        setIsSubmittingOrder(false);
+      }
+
+      return;
+    }
+
+    setIsOrderDialogOpen(false);
+    alert(
+      `${selectedItem.type === 'product' ? 'Order' : 'Booking'} placed successfully!`,
+    );
   };
 
   return (
@@ -245,6 +566,22 @@ const Marketplace = () => {
           ))}
         </div>
       </div>
+
+      {USE_REAL_MARKETPLACE && isLoading && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Loading live marketplace...
+          </CardContent>
+        </Card>
+      )}
+
+      {USE_REAL_MARKETPLACE && loadError && (
+        <Card>
+          <CardContent className="p-4 text-sm text-amber-700">
+            {loadError}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs defaultValue="products" className="space-y-6">
@@ -362,30 +699,55 @@ const Marketplace = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium">Quantity</label>
-                      <Input type="number" min={1} defaultValue={1} />
+                      <Input
+                        type="number"
+                        min={1}
+                        value={orderQuantity}
+                        onChange={(event) => setOrderQuantity(event.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Delivery Address</label>
-                      <Input placeholder="Enter your address" />
+                      <Input
+                        placeholder="Enter your address"
+                        value={deliveryAddress}
+                        onChange={(event) => setDeliveryAddress(event.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Notes (optional)</label>
-                      <Input placeholder="Any special instructions..." />
+                      <Input
+                        placeholder="Any special instructions..."
+                        value={orderNotes}
+                        onChange={(event) => setOrderNotes(event.target.value)}
+                      />
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium">Preferred Date</label>
-                      <Input type="date" />
+                      <Input
+                        type="date"
+                        value={serviceDate}
+                        onChange={(event) => setServiceDate(event.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Preferred Time</label>
-                      <Input type="time" />
+                      <Input
+                        type="time"
+                        value={serviceTime}
+                        onChange={(event) => setServiceTime(event.target.value)}
+                      />
                     </div>
                     <div>
                       <label className="text-sm font-medium">Project Details</label>
-                      <Input placeholder="Brief description of what you need..." />
+                      <Input
+                        placeholder="Brief description of what you need..."
+                        value={serviceNotes}
+                        onChange={(event) => setServiceNotes(event.target.value)}
+                      />
                     </div>
                   </div>
                 )}
@@ -393,20 +755,27 @@ const Marketplace = () => {
                 {/* Total */}
                 <div className="flex justify-between items-center pt-4 border-t">
                   <span className="text-gray-600">Total</span>
-                  <span className="text-xl font-bold">${selectedItem.data.price}</span>
+                  <span className="text-xl font-bold">
+                    $
+                    {selectedItem.type === 'product'
+                      ? selectedItem.data.price * Math.max(1, Number(orderQuantity) || 1)
+                      : selectedItem.data.price}
+                  </span>
                 </div>
+
+                {orderError && (
+                  <p className="text-sm text-red-600">{orderError}</p>
+                )}
 
                 <Button
                   className="w-full bg-[var(--brand-primary)]"
-                  onClick={() => {
-                    setIsOrderDialogOpen(false);
-                    alert(`${selectedItem.type === 'product' ? 'Order' : 'Booking'} placed successfully!`);
-                  }}
+                  disabled={isSubmittingOrder}
+                  onClick={handleConfirmOrder}
                 >
                   {selectedItem.type === 'product' ? (
-                    <><ShoppingCart className="w-4 h-4 mr-2" /> Place Order</>
+                    <><ShoppingCart className="w-4 h-4 mr-2" /> {isSubmittingOrder ? 'Placing Order...' : 'Place Order'}</>
                   ) : (
-                    <><Calendar className="w-4 h-4 mr-2" /> Confirm Booking</>
+                    <><Calendar className="w-4 h-4 mr-2" /> {isSubmittingOrder ? 'Confirming Booking...' : 'Confirm Booking'}</>
                   )}
                 </Button>
               </div>
@@ -484,11 +853,15 @@ const Marketplace = () => {
 
               <Button
                 className="w-full bg-[var(--brand-primary)]"
-                disabled={reviewRating === 0 || !reviewComment.trim()}
+                disabled={reviewRating === 0 || !reviewComment.trim() || isSavingReview}
                 onClick={handleSubmitReview}
               >
-                Submit Review
+                {isSavingReview ? 'Submitting Review...' : 'Submit Review'}
               </Button>
+
+              {reviewError && (
+                <p className="text-sm text-red-600">{reviewError}</p>
+              )}
 
               <Separator />
 
@@ -499,7 +872,9 @@ const Marketplace = () => {
                     {(venReviews[reviewTarget.postId] || []).length} reviews
                   </Badge>
                 </div>
-                {(venReviews[reviewTarget.postId] || []).length === 0 ? (
+                {isReviewLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading reviews...</p>
+                ) : (venReviews[reviewTarget.postId] || []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No reviews yet.</p>
                 ) : (
                   <div className="space-y-3">
@@ -588,7 +963,7 @@ const VenScoreRow = ({ summary, onReview }: VenScoreRowProps) => {
 
 interface ProductCardProps {
   product: Product;
-  post: any;
+  post: MarketplaceDisplayPost;
   onOrder: () => void;
   onReview: () => void;
   reviewSummary: ReviewSummary;
@@ -609,7 +984,7 @@ const ProductCard = ({ product, post, onOrder, onReview, reviewSummary }: Produc
     addBookmark({
       title: product.name,
       description: product.description,
-      type: 'resource',
+      type: 'post',
       category: 'business',
       tags: [product.category],
       imageUrl: post.media?.[0]?.url,
@@ -699,7 +1074,7 @@ const ProductCard = ({ product, post, onOrder, onReview, reviewSummary }: Produc
 
 interface ServiceCardProps {
   service: Service;
-  post: any;
+  post: MarketplaceDisplayPost;
   onBook: () => void;
   onReview: () => void;
   reviewSummary: ReviewSummary;
@@ -720,7 +1095,7 @@ const ServiceCard = ({ service, post, onBook, onReview, reviewSummary }: Service
     addBookmark({
       title: service.name,
       description: service.description,
-      type: 'resource',
+      type: 'post',
       category: 'business',
       tags: [service.category],
       imageUrl: post.media?.[0]?.url,

@@ -19,6 +19,87 @@ const mediaSchema = z.object({
   url: z.string(),
 });
 
+const pitchAttachmentSchema = z.object({
+  name: z.string(),
+  url: z.string(),
+});
+
+const pitchLinkSchema = z.object({
+  label: z.string(),
+  url: z.string(),
+});
+
+const pitchSchema = z.object({
+  videoUrl: z.string().optional(),
+  deckUrl: z.string().optional(),
+  attachments: z.array(pitchAttachmentSchema).optional(),
+  links: z.array(pitchLinkSchema).optional(),
+});
+
+const productSchema = z.object({
+  name: z.string(),
+  price: z.number().nonnegative(),
+  currency: z.string(),
+  description: z.string(),
+  category: z.string(),
+  inStock: z.boolean(),
+  quantity: z.number().int().nonnegative().optional(),
+});
+
+const serviceSchema = z.object({
+  name: z.string(),
+  price: z.number().nonnegative(),
+  currency: z.string(),
+  priceType: z.enum(['hourly', 'project', 'monthly']),
+  description: z.string(),
+  category: z.string(),
+  availability: z.enum(['immediate', '1-week', '2-weeks', '1-month']),
+});
+
+const crowdfundingSchema = z.object({
+  target: z.number().nonnegative(),
+  raised: z.number().nonnegative(),
+  backers: z.number().int().nonnegative(),
+  daysLeft: z.number().int().nonnegative(),
+  minInvestment: z.number().nonnegative(),
+  maxInvestment: z.number().nonnegative().optional(),
+  currency: z.string().optional(),
+  equity: z.string().optional(),
+  pitch: pitchSchema.optional(),
+});
+
+const investmentSchema = z.object({
+  amount: z.object({
+    min: z.number().nonnegative(),
+    max: z.number().nonnegative(),
+  }),
+  stage: z.array(z.string()),
+  industries: z.array(z.string()),
+});
+
+const investmentRequestSchema = z.object({
+  amount: z.object({
+    min: z.number().nonnegative(),
+    max: z.number().nonnegative(),
+  }),
+  stage: z.array(z.string()),
+  industries: z.array(z.string()),
+  pitch: pitchSchema.optional(),
+  timeline: z.string().optional(),
+});
+
+const mentorshipSchema = z.object({
+  expertise: z.array(z.string()),
+  commitment: z.enum(['full-time', 'part-time', 'ad-hoc']),
+  duration: z.string(),
+});
+
+const promoSchema = z.object({
+  discount: z.number().nonnegative(),
+  code: z.string(),
+  validUntil: z.string(),
+});
+
 const postAuthorSchema = z.object({
   id: z.uuid(),
   name: z.string(),
@@ -35,6 +116,14 @@ const postSchema = z.object({
   content: z.string(),
   visibility: visibilitySchema,
   media: z.array(mediaSchema).default([]),
+  pitch: pitchSchema.optional(),
+  product: productSchema.optional(),
+  service: serviceSchema.optional(),
+  crowdfunding: crowdfundingSchema.optional(),
+  investment: investmentSchema.optional(),
+  investmentRequest: investmentRequestSchema.optional(),
+  mentorship: mentorshipSchema.optional(),
+  promo: promoSchema.optional(),
   likes: z.number().int().nonnegative(),
   loves: z.number().int().nonnegative(),
   interests: z.number().int().nonnegative(),

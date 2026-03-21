@@ -11,8 +11,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useBookmarks, type BookmarkCategory } from '@/context/BookmarkContext';
 import { useCalendarPanel } from '@/context/CalendarPanelContext';
 import { useEngagement } from '@/context/EngagementContext';
-import { postsApi, type PostCommentDto, type PostDto } from '@/api/posts';
+import { postsApi } from '@/api/posts';
 import { mockPosts, mockComments, postTypeConfig } from '@/data/mockPosts';
+import { mapCommentDtoToUi, mapPostDtoToUi } from '@/lib/post-mappers';
 import type { Post, PostType, Comment } from '@/types';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -71,59 +72,6 @@ import {
 
 const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
 
-function mapApiPostToUi(post: PostDto): Post {
-  const media = post.media
-    .filter((item) => item.type === 'image' || item.type === 'video')
-    .map((item) => ({
-      type: item.type as 'image' | 'video',
-      url: item.url,
-    }));
-
-  return {
-    id: post.id,
-    userId: post.userId,
-    author: {
-      id: post.author.id,
-      name: post.author.name,
-      company: post.author.company,
-      avatar: post.author.avatar ?? undefined,
-      userType: post.author.userType,
-    },
-    type: post.type,
-    content: post.content,
-    media,
-    likes: post.likes,
-    loves: post.loves,
-    interests: post.interests,
-    bookmarks: post.bookmarks,
-    reposts: post.reposts,
-    comments: post.comments,
-    shares: post.shares,
-    createdAt: new Date(post.createdAt),
-    isLiked: post.isLiked ?? false,
-    isLoved: post.isLoved ?? false,
-    isInterested: post.isInterested ?? false,
-    isShared: post.isShared ?? false,
-    isReposted: post.isReposted ?? false,
-    isBookmarked: post.isBookmarked ?? false,
-  };
-}
-
-function mapApiCommentToUi(comment: PostCommentDto): Comment {
-  return {
-    id: comment.id,
-    postId: comment.postId,
-    userId: comment.userId,
-    content: comment.content,
-    likes: comment.likes,
-    createdAt: new Date(comment.createdAt),
-    author: {
-      name: comment.author.name,
-      avatar: comment.author.avatar ?? undefined,
-    },
-  };
-}
-
 const TheHub = () => {
   const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>(USE_REAL_FEED ? [] : mockPosts);
@@ -161,7 +109,7 @@ const TheHub = () => {
       try {
         const { data } = await postsApi.getFeed({ limit: 30 });
         if (isCancelled) return;
-        setPosts(data.items.map(mapApiPostToUi));
+        setPosts(data.items.map(mapPostDtoToUi));
       } catch (error) {
         if (isCancelled) return;
         console.error('Failed to load feed from API:', error);
@@ -192,7 +140,7 @@ const TheHub = () => {
         const { data } = await postsApi.getComments(selectedPost.id, 100);
         if (isCancelled) return;
 
-        const mapped = data.items.map(mapApiCommentToUi);
+        const mapped = data.items.map(mapCommentDtoToUi);
         setComments((prev) => [
           ...prev.filter((comment) => comment.postId !== selectedPost.id),
           ...mapped,
@@ -453,7 +401,7 @@ const TheHub = () => {
           content: newComment.trim(),
         });
 
-        const mappedComment = mapApiCommentToUi(data);
+        const mappedComment = mapCommentDtoToUi(data);
         setComments((prev) => [mappedComment, ...prev]);
         setNewComment('');
 
@@ -502,7 +450,7 @@ const TheHub = () => {
         visibility: 'public',
       });
 
-      setPosts((prev) => [mapApiPostToUi(data), ...prev]);
+      setPosts((prev) => [mapPostDtoToUi(data), ...prev]);
       return;
     }
 

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentProps } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   addMinutes,
   addDays,
@@ -27,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { useCalendarRuntime } from '@/lib/calendar-runtime';
 import { cn } from '@/lib/utils';
 import type { DayButton as DayButtonComponent } from 'react-day-picker';
 import {
@@ -45,8 +47,6 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  calendarEvents,
-  calendarIntegrations,
   type CalendarEvent,
   type CalendarEventType,
 } from '@/data/mockCalendar';
@@ -99,8 +99,19 @@ const CalendarPage = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>('month');
-  const [events, setEvents] = useState<CalendarEvent[]>(calendarEvents);
-  const [integrations, setIntegrations] = useState(calendarIntegrations);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const {
+    addEventToVendromCalendar,
+    createEvent: persistCalendarEvent,
+    disconnectIntegration: persistIntegrationDisconnect,
+    events,
+    integrations,
+    isLoading,
+    loadError,
+    startOauthIntegration,
+    updateEvent: persistCalendarEventUpdate,
+  } = useCalendarRuntime();
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDate, setNewEventDate] = useState<Date | undefined>();
   const [newEventTime, setNewEventTime] = useState('');
@@ -122,6 +133,34 @@ const CalendarPage = () => {
   const [editType, setEditType] = useState<CalendarEventType>('meeting');
   const [editMeetingMode, setEditMeetingMode] = useState<MeetingMode>('virtual');
   const [editMeetingLink, setEditMeetingLink] = useState('');
+
+  useEffect(() => {
+    const search = new URLSearchParams(location.search);
+    const oauthState = search.get('calendar_oauth');
+    const provider = search.get('provider');
+    if (!oauthState) {
+      return;
+    }
+
+    setNotice({
+      tone: oauthState === 'success' ? 'success' : 'warning',
+      message:
+        oauthState === 'success'
+          ? `${provider === 'google' ? 'Google Calendar' : 'Microsoft Outlook'} connected successfully.`
+          : `Failed to connect ${provider === 'google' ? 'Google Calendar' : 'Microsoft Outlook'}.`,
+    });
+
+    search.delete('calendar_oauth');
+    search.delete('provider');
+    const nextSearch = search.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+      },
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate]);
 
   const eventsByDate = useMemo(() => {
     return events.reduce<Record<string, CalendarEvent[]>>((acc, event) => {
@@ -244,7 +283,7 @@ const CalendarPage = () => {
     setSelectedDate(today);
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!newEventTitle || !newEventDate) return;
 
     const start = new Date(newEventDate);
@@ -269,31 +308,43 @@ const CalendarPage = () => {
     const isMeeting = newEventType === 'meeting';
     const meetingMode = isMeeting ? newMeetingMode : undefined;
 
-    const newEvent: CalendarEvent = {
-      id: `event-${Date.now()}`,
+    try {
+      const newEvent = await persistCalendarEvent({
       title: newEventTitle,
       description: newEventLocation ? `Location: ${newEventLocation}` : undefined,
       location: newEventLocation || undefined,
       start,
       end,
-      timeLabel,
       type: newEventType,
-      source: 'vendrom',
       link: '/dashboard/briefboard',
       meetingMode,
       meetingLink: meetingMode === 'virtual' ? newMeetingLink : undefined,
-    };
+      });
 
-    setEvents((prev) => [newEvent, ...prev]);
-    setNewEventTitle('');
-    setNewEventDate(undefined);
-    setNewEventTime('');
-    setNewEventEndTime('');
-    setNewEventLocation('');
-    setNewEventType('meeting');
-    setNewMeetingMode('virtual');
-    setNewMeetingLink('');
-    setIsCreateDialogOpen(false);
+      setCurrentDate(newEvent.start);
+      setSelectedDate(newEvent.start);
+      setNotice({
+        tone: 'success',
+        message: `Saved ${timeLabel === 'All day' ? 'calendar item' : 'event'} to your Vendrom calendar.`,
+      });
+      setNewEventTitle('');
+      setNewEventDate(undefined);
+      setNewEventTime('');
+      setNewEventEndTime('');
+      setNewEventLocation('');
+      setNewEventType('meeting');
+      setNewMeetingMode('virtual');
+      setNewMeetingLink('');
+      setIsCreateDialogOpen(false);
+    } catch (error) {
+      setNotice({
+        tone: 'warning',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to save the calendar event.',
+      });
+    }
   };
 
   const openCreateDialog = (mode: 'meeting' | 'event') => {
@@ -321,7 +372,7 @@ const CalendarPage = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editEvent || !editTitle || !editDate) return;
 
     const start = new Date(editDate);
@@ -357,9 +408,33 @@ const CalendarPage = () => {
       meetingLink: meetingMode === 'virtual' ? editMeetingLink : undefined,
     };
 
-    setEvents((prev) => prev.map((event) => (event.id === editEvent.id ? updatedEvent : event)));
-    setIsEditDialogOpen(false);
-    setEditEvent(null);
+    try {
+      await persistCalendarEventUpdate(editEvent.id, {
+        title: updatedEvent.title,
+        description: updatedEvent.description,
+        location: updatedEvent.location,
+        start: updatedEvent.start,
+        end: updatedEvent.end,
+        type: updatedEvent.type,
+        meetingMode: updatedEvent.meetingMode,
+        meetingLink: updatedEvent.meetingLink,
+        link: updatedEvent.link,
+      });
+      setIsEditDialogOpen(false);
+      setEditEvent(null);
+      setNotice({
+        tone: 'success',
+        message: 'Calendar event updated.',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'warning',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update the calendar event.',
+      });
+    }
   };
 
   const getEventWindow = (event: CalendarEvent) => {
@@ -378,7 +453,7 @@ const CalendarPage = () => {
     });
   };
 
-  const handleUpcomingAction = (event: CalendarEvent) => {
+  const handleUpcomingAction = async (event: CalendarEvent) => {
     if (event.source === 'vendrom') {
       focusDate(event.start);
       setNotice({
@@ -395,29 +470,56 @@ const CalendarPage = () => {
     };
     const conflicts = findConflicts(clonedEvent);
 
-    setEvents((prev) => [clonedEvent, ...prev]);
-    focusDate(clonedEvent.start);
-    setNotice({
-      tone: conflicts.length > 0 ? 'warning' : 'success',
-      message:
-        conflicts.length > 0
-          ? `Added, but this overlaps with ${conflicts.length} event${conflicts.length === 1 ? '' : 's'}.`
-          : 'Added to your calendar.',
-    });
+    try {
+      const addedEvent = await addEventToVendromCalendar(event);
+      focusDate(addedEvent.start);
+      setNotice({
+        tone: conflicts.length > 0 ? 'warning' : 'success',
+        message:
+          conflicts.length > 0
+            ? `Added, but this overlaps with ${conflicts.length} event${conflicts.length === 1 ? '' : 's'}.`
+            : 'Added to your calendar.',
+      });
+    } catch (error) {
+      setNotice({
+        tone: 'warning',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to add the event to your calendar.',
+      });
+    }
   };
 
-  const toggleIntegration = (id: typeof integrations[number]['id']) => {
-    setIntegrations((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              connected: !item.connected,
-              lastSync: item.connected ? undefined : 'Just now',
-            }
-          : item
-      )
-    );
+  const handleToggleIntegration = async (id: typeof integrations[number]['id']) => {
+    try {
+      const current = integrations.find((item) => item.id === id);
+      if (current?.connected) {
+        const integration = await persistIntegrationDisconnect(id);
+        setNotice({
+          tone: 'info',
+          message: `${integration.name} disconnected.`,
+        });
+        return;
+      }
+
+      const authUrl = await startOauthIntegration(id);
+      setNotice({
+        tone: 'info',
+        message: `Redirecting to ${current?.name ?? 'calendar provider'}...`,
+      });
+      if (authUrl) {
+        window.location.assign(authUrl);
+      }
+    } catch (error) {
+      setNotice({
+        tone: 'warning',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to update the calendar integration.',
+      });
+    }
   };
 
   const DayButton = ({
@@ -518,6 +620,14 @@ const CalendarPage = () => {
             </Button>
           </div>
         </div>
+
+        {(isLoading || loadError) && (
+          <div className="rounded-lg border border-border/60 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+            {isLoading
+              ? 'Loading live calendar data...'
+              : loadError}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleToday}>
@@ -1122,7 +1232,7 @@ const CalendarPage = () => {
                   <Button
                     size="sm"
                     variant={integration.connected ? 'outline' : 'default'}
-                    onClick={() => toggleIntegration(integration.id)}
+                    onClick={() => void handleToggleIntegration(integration.id)}
                   >
                     {integration.connected ? 'Disconnect' : 'Connect'}
                   </Button>

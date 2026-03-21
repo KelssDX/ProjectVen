@@ -6,6 +6,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
@@ -37,6 +38,7 @@ async function bootstrap(): Promise<void> {
       forbidUnknownValues: false,
     }),
   );
+  app.useWebSocketAdapter(new IoAdapter(app));
 
   await app.listen(port, host);
 }

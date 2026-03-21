@@ -15,24 +15,34 @@
     "db:smoke": "tsx scripts/db-smoke.ts",
     "migrate:check": "tsx scripts/migration-check.ts",
     "contracts:check": "tsx scripts/contracts-check.ts",
-    "openapi:generate": "node scripts/generate-openapi.cjs"
+    "openapi:generate": "node scripts/generate-openapi.cjs",
+    "calendar:sync:worker": "tsx scripts/calendar-sync-worker.ts",
+    "search:index:worker": "tsx scripts/search-index-worker.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.1.9",
     "@nestjs/platform-fastify": "^11.1.9",
+    "@nestjs/platform-socket.io": "^11.1.17",
     "@nestjs/swagger": "^11.2.1",
+    "@nestjs/websockets": "^11.1.17",
     "@types/jsonwebtoken": "^9.0.10",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
     "jsonwebtoken": "^9.0.3",
+    "nats": "^2.29.3",
     "pg": "^8.16.3",
+    "redis": "^5.11.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "socket.io": "^4.8.3",
     "vendrome-web": "file:..",
     "zod": "^4.1.12"
+  },
+  "overrides": {
+    "lodash": "4.17.21"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

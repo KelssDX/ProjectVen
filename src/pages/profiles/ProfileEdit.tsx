@@ -38,6 +38,7 @@ const ProfileEdit = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [saveError, setSaveError] = useState('');
   const [newSkill, setNewSkill] = useState('');
   const [newLookingFor, setNewLookingFor] = useState('');
   const [newAchievement, setNewAchievement] = useState('');
@@ -85,14 +86,23 @@ const ProfileEdit = () => {
     e.preventDefault();
     setIsSaving(true);
     setSuccessMessage('');
+    setSaveError('');
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const savedProfile = formData.id
+        ? await profileService.updateProfile(formData.id, formData)
+        : await profileService.createProfile(formData as Omit<BusinessProfile, 'id' | 'views' | 'connections'>);
+
+      if (!savedProfile) {
+        throw new Error('Profile could not be saved.');
+      }
+
+      setFormData(savedProfile);
       setSuccessMessage('Profile updated successfully!');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Error saving profile:', error);
+      setSaveError(error instanceof Error ? error.message : 'Unable to save profile.');
     } finally {
       setIsSaving(false);
     }
@@ -193,6 +203,12 @@ const ProfileEdit = () => {
           </div>
         )}
       </div>
+
+      {saveError && (
+        <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+          {saveError}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}

@@ -1,4 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  investmentsApi,
+  type InvestmentCampaignDto,
+  type InvestmentCommitmentDto,
+} from '@/api/investments';
+import { postsApi } from '@/api/posts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +17,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { useAuth } from '@/context/AuthContext';
 import { mockPosts } from '@/data/mockPosts';
+import { mapPostDtoToUi } from '@/lib/post-mappers';
+import type { Post } from '@/types';
 import {
   TrendingUp,
   DollarSign,
@@ -29,6 +38,9 @@ import {
   Paperclip,
   PlayCircle,
 } from 'lucide-react';
+
+const USE_REAL_INVESTMENTS =
+  import.meta.env.VITE_FEATURE_USE_REAL_INVESTMENTS === 'true';
 
 interface CrowdfundingComment {
   id: string;
@@ -48,50 +60,279 @@ interface PitchAssetsProps {
   };
 }
 
+type CrowdfundingPost = Post & { crowdfunding: NonNullable<Post['crowdfunding']> };
+type InvestorPost = Post & { investment: NonNullable<Post['investment']> };
+type InvesteePost = Post & {
+  investmentRequest: NonNullable<Post['investmentRequest']>;
+};
+
+const initialCrowdfundingComments: Record<string, CrowdfundingComment[]> = {
+  '2': [
+    {
+      id: 'cf-1',
+      authorName: 'Anonymous Investor',
+      content: 'Excited to support this mission. Keep the updates coming.',
+      createdAt: new Date('2026-01-18T10:00:00'),
+      isAnonymous: true,
+      amount: 2500,
+    },
+    {
+      id: 'cf-2',
+      authorName: 'Lerato Mokoena',
+      content: 'Great traction numbers. The market is ready for this.',
+      createdAt: new Date('2026-01-20T15:30:00'),
+      isAnonymous: false,
+      amount: 5000,
+    },
+  ],
+};
+
+const isCrowdfundingPost = (post: Post): post is CrowdfundingPost =>
+  post.type === 'crowdfunding' && Boolean(post.crowdfunding);
+
+const isInvestorPost = (post: Post): post is InvestorPost =>
+  post.type === 'investment' && Boolean(post.investment);
+
+const isInvesteePost = (post: Post): post is InvesteePost =>
+  post.type === 'investment' && Boolean(post.investmentRequest);
+
+const getMockCrowdfundingPosts = (): CrowdfundingPost[] =>
+  mockPosts.filter(isCrowdfundingPost);
+
+const getMockInvestorPosts = (): InvestorPost[] => mockPosts.filter(isInvestorPost);
+
+const getMockInvesteePosts = (): InvesteePost[] => mockPosts.filter(isInvesteePost);
+
+const mapCommitmentToComment = (
+  commitment: InvestmentCommitmentDto,
+): CrowdfundingComment | null => {
+  const content = commitment.comment?.trim();
+  if (!content) {
+    return null;
+  }
+
+  return {
+    id: commitment.id,
+    authorName: commitment.investorName,
+    content,
+    createdAt: new Date(commitment.createdAt),
+    isAnonymous: commitment.isAnonymous,
+    amount: commitment.amount,
+  };
+};
+
+const calculateDaysLeft = (endsAt?: string | null) => {
+  if (!endsAt) {
+    return 0;
+  }
+
+  const diff = new Date(endsAt).getTime() - Date.now();
+  if (Number.isNaN(diff)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+};
+
+const applyCampaignSnapshot = (
+  post: CrowdfundingPost,
+  campaign: InvestmentCampaignDto,
+): CrowdfundingPost => ({
+  ...post,
+  crowdfunding: {
+    ...post.crowdfunding,
+    target: campaign.targetAmount,
+    raised: campaign.raisedAmount,
+    backers: campaign.backersCount,
+    minInvestment: campaign.minInvestment,
+    maxInvestment: campaign.maxInvestment,
+    currency: campaign.currency,
+    equity: campaign.equity,
+    daysLeft: calculateDaysLeft(campaign.endsAt),
+  },
+});
+
 const Investments = () => {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
+  const [selectedCampaign, setSelectedCampaign] =
+    useState<CrowdfundingPost | null>(null);
   const [isInvestDialogOpen, setIsInvestDialogOpen] = useState(false);
   const [investAmount, setInvestAmount] = useState('');
   const [investComment, setInvestComment] = useState('');
   const [investAnonymous, setInvestAnonymous] = useState(false);
-  const [crowdfundingComments, setCrowdfundingComments] = useState<Record<string, CrowdfundingComment[]>>({
-    '2': [
-      {
-        id: 'cf-1',
-        authorName: 'Anonymous Investor',
-        content: 'Excited to support this mission. Keep the updates coming.',
-        createdAt: new Date('2026-01-18T10:00:00'),
-        isAnonymous: true,
-        amount: 2500,
-      },
-      {
-        id: 'cf-2',
-        authorName: 'Lerato Mokoena',
-        content: 'Great traction numbers. The market is ready for this.',
-        createdAt: new Date('2026-01-20T15:30:00'),
-        isAnonymous: false,
-        amount: 5000,
-      },
-    ],
-  });
+  const [crowdfundingPosts, setCrowdfundingPosts] = useState<CrowdfundingPost[]>(
+    () => getMockCrowdfundingPosts(),
+  );
+  const [investorPosts, setInvestorPosts] = useState<InvestorPost[]>(
+    () => getMockInvestorPosts(),
+  );
+  const [investeePosts, setInvesteePosts] = useState<InvesteePost[]>(
+    () => getMockInvesteePosts(),
+  );
+  const [crowdfundingComments, setCrowdfundingComments] = useState<
+    Record<string, CrowdfundingComment[]>
+  >(initialCrowdfundingComments);
+  const [isLoading, setIsLoading] = useState(USE_REAL_INVESTMENTS);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const [commitmentError, setCommitmentError] = useState<string | null>(null);
+  const [isSubmittingCommitment, setIsSubmittingCommitment] = useState(false);
 
-  const crowdfundingPosts = mockPosts.filter(p => p.type === 'crowdfunding' && p.crowdfunding);
-  const investorPosts = mockPosts.filter(p => p.type === 'investment' && p.investment);
-  const investeePosts = mockPosts.filter(p => p.type === 'investment' && p.investmentRequest);
+  useEffect(() => {
+    if (!USE_REAL_INVESTMENTS) {
+      return;
+    }
 
-  const filteredCrowdfunding = crowdfundingPosts.filter(p => {
-    const matchesSearch = p.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         p.author.company.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+    let isMounted = true;
 
-  const handleInvest = (post: any) => {
+    const loadInvestments = async () => {
+      setIsLoading(true);
+      setLoadError(null);
+
+      try {
+        const [crowdfundingResponse, investmentResponse, campaignsResponse] =
+          await Promise.all([
+            postsApi.getFeed({ type: 'crowdfunding', limit: 50 }),
+            postsApi.getFeed({ type: 'investment', limit: 50 }),
+            investmentsApi.getCampaigns({ limit: 50 }),
+          ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        const campaignMap = new Map(
+          campaignsResponse.data.items.map((campaign) => [campaign.postId, campaign]),
+        );
+        const liveCrowdfundingPosts = crowdfundingResponse.data.items
+          .map(mapPostDtoToUi)
+          .filter(isCrowdfundingPost)
+          .map((post) => {
+            const campaign = campaignMap.get(post.id);
+            return campaign ? applyCampaignSnapshot(post, campaign) : post;
+          });
+        const liveInvestmentPosts = investmentResponse.data.items
+          .map(mapPostDtoToUi)
+          .filter((post) => post.type === 'investment');
+
+        setCrowdfundingPosts(liveCrowdfundingPosts);
+        setInvestorPosts(liveInvestmentPosts.filter(isInvestorPost));
+        setInvesteePosts(liveInvestmentPosts.filter(isInvesteePost));
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setCrowdfundingPosts(getMockCrowdfundingPosts());
+        setInvestorPosts(getMockInvestorPosts());
+        setInvesteePosts(getMockInvesteePosts());
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to load live investment data. Showing fallback data.',
+        );
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadInvestments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const filteredCrowdfunding = useMemo(
+    () =>
+      crowdfundingPosts.filter((post) => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) {
+          return true;
+        }
+
+        return (
+          post.content.toLowerCase().includes(query) ||
+          post.author.company.toLowerCase().includes(query) ||
+          post.author.name.toLowerCase().includes(query)
+        );
+      }),
+    [crowdfundingPosts, searchQuery],
+  );
+
+  const filteredInvestorPosts = useMemo(
+    () =>
+      investorPosts.filter((post) => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) {
+          return true;
+        }
+
+        return (
+          post.content.toLowerCase().includes(query) ||
+          post.author.company.toLowerCase().includes(query) ||
+          post.author.name.toLowerCase().includes(query) ||
+          post.investment.industries.some((industry) =>
+            industry.toLowerCase().includes(query),
+          )
+        );
+      }),
+    [investorPosts, searchQuery],
+  );
+
+  const filteredInvesteePosts = useMemo(
+    () =>
+      investeePosts.filter((post) => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) {
+          return true;
+        }
+
+        return (
+          post.content.toLowerCase().includes(query) ||
+          post.author.company.toLowerCase().includes(query) ||
+          post.author.name.toLowerCase().includes(query) ||
+          post.investmentRequest.industries.some((industry) =>
+            industry.toLowerCase().includes(query),
+          )
+        );
+      }),
+    [investeePosts, searchQuery],
+  );
+
+  const handleInvest = async (post: CrowdfundingPost) => {
     setSelectedCampaign(post);
     setInvestAmount(post.crowdfunding?.minInvestment?.toString() || '100');
     setInvestComment('');
     setInvestAnonymous(false);
+    setCommitmentError(null);
     setIsInvestDialogOpen(true);
+
+    if (!USE_REAL_INVESTMENTS) {
+      return;
+    }
+
+    setIsCommentsLoading(true);
+    try {
+      const { data } = await investmentsApi.getCommitments(post.id, 20);
+      setCrowdfundingComments((previous) => ({
+        ...previous,
+        [post.id]: data.items
+          .map(mapCommitmentToComment)
+          .filter((comment): comment is CrowdfundingComment => comment !== null),
+      }));
+    } catch (error) {
+      setCommitmentError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load investor comments.',
+      );
+    } finally {
+      setIsCommentsLoading(false);
+    }
   };
 
   const currencySymbol = (currency?: string) => {
@@ -99,28 +340,90 @@ const Investments = () => {
     return currency === 'ZAR' ? 'R' : '$';
   };
 
-  const handleConfirmInvestment = () => {
+  const handleConfirmInvestment = async () => {
     if (!selectedCampaign) return;
 
-    if (investComment.trim()) {
-      const comment: CrowdfundingComment = {
-        id: `cf-${Date.now()}`,
-        authorName: investAnonymous ? 'Anonymous Investor' : 'Demo User',
-        content: investComment.trim(),
-        createdAt: new Date(),
-        isAnonymous: investAnonymous,
-        amount: Number(investAmount || 0),
-      };
-
-      setCrowdfundingComments((prev) => ({
-        ...prev,
-        [selectedCampaign.id]: [comment, ...(prev[selectedCampaign.id] || [])],
-      }));
+    const amount = Number(investAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setCommitmentError('Enter a valid investment amount.');
+      return;
     }
 
-    setIsInvestDialogOpen(false);
-    alert(`Investment of ${currencySymbol(selectedCampaign.crowdfunding?.currency)}${investAmount} confirmed!`);
+    if (!USE_REAL_INVESTMENTS) {
+      if (investComment.trim()) {
+        const comment: CrowdfundingComment = {
+          id: `cf-${Date.now()}`,
+          authorName: investAnonymous
+            ? 'Anonymous Investor'
+            : `${user?.firstName ?? 'Demo'} ${user?.lastName ?? 'User'}`.trim(),
+          content: investComment.trim(),
+          createdAt: new Date(),
+          isAnonymous: investAnonymous,
+          amount,
+        };
+
+        setCrowdfundingComments((prev) => ({
+          ...prev,
+          [selectedCampaign.id]: [comment, ...(prev[selectedCampaign.id] || [])],
+        }));
+      }
+
+      setIsInvestDialogOpen(false);
+      alert(`Investment of ${currencySymbol(selectedCampaign.crowdfunding?.currency)}${investAmount} confirmed!`);
+      return;
+    }
+
+    setIsSubmittingCommitment(true);
+    setCommitmentError(null);
+
+    try {
+      const { data } = await investmentsApi.createCommitment(selectedCampaign.id, {
+        amount,
+        comment: investComment.trim() || undefined,
+        isAnonymous: investAnonymous,
+      });
+      const updatedCampaign = applyCampaignSnapshot(selectedCampaign, data.campaign);
+
+      setCrowdfundingPosts((previous) =>
+        previous.map((post) =>
+          post.id === selectedCampaign.id ? updatedCampaign : post,
+        ),
+      );
+      setSelectedCampaign(updatedCampaign);
+
+      const newComment = mapCommitmentToComment(data.commitment);
+      if (newComment) {
+        setCrowdfundingComments((previous) => ({
+          ...previous,
+          [selectedCampaign.id]: [newComment, ...(previous[selectedCampaign.id] || [])],
+        }));
+      }
+
+      setIsInvestDialogOpen(false);
+      alert(
+        `Investment of ${currencySymbol(data.campaign.currency)}${amount.toLocaleString()} confirmed!`,
+      );
+    } catch (error) {
+      setCommitmentError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to create investment commitment.',
+      );
+    } finally {
+      setIsSubmittingCommitment(false);
+    }
   };
+
+  const totalRaised = crowdfundingPosts.reduce(
+    (sum, post) => sum + post.crowdfunding.raised,
+    0,
+  );
+  const totalInvestors = crowdfundingPosts.reduce(
+    (sum, post) => sum + post.crowdfunding.backers,
+    0,
+  );
+  const averageRaisePerCampaign =
+    crowdfundingPosts.length > 0 ? totalRaised / crowdfundingPosts.length : 0;
 
   return (
     <div className="space-y-6">
@@ -152,7 +455,10 @@ const Investments = () => {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-gray-500">Total Raised</p>
-            <p className="text-2xl font-bold">$50M+</p>
+            <p className="text-2xl font-bold">
+              {currencySymbol(crowdfundingPosts[0]?.crowdfunding.currency)}
+              {Math.round(totalRaised).toLocaleString()}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -164,13 +470,16 @@ const Investments = () => {
         <Card>
           <CardContent className="p-6">
             <p className="text-sm text-gray-500">Total Investors</p>
-            <p className="text-2xl font-bold">2,450</p>
+            <p className="text-2xl font-bold">{totalInvestors.toLocaleString()}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-gray-500">Avg. Return</p>
-            <p className="text-2xl font-bold text-green-600">24%</p>
+            <p className="text-sm text-gray-500">Avg. Campaign Raise</p>
+            <p className="text-2xl font-bold text-green-600">
+              {currencySymbol(crowdfundingPosts[0]?.crowdfunding.currency)}
+              {Math.round(averageRaisePerCampaign).toLocaleString()}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -186,6 +495,14 @@ const Investments = () => {
         />
       </div>
 
+      {USE_REAL_INVESTMENTS && loadError ? (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-4 text-sm text-amber-900">
+            {loadError}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {/* Tabs */}
       <Tabs defaultValue="crowdfunding" className="space-y-6">
         <TabsList>
@@ -195,11 +512,11 @@ const Investments = () => {
           </TabsTrigger>
           <TabsTrigger value="investors" className="flex items-center gap-2">
             <DollarSign className="w-4 h-4" />
-            Investors ({investorPosts.length})
+            Investors ({filteredInvestorPosts.length})
           </TabsTrigger>
           <TabsTrigger value="investees" className="flex items-center gap-2">
             <Target className="w-4 h-4" />
-            Investees ({investeePosts.length})
+            Investees ({filteredInvesteePosts.length})
           </TabsTrigger>
           <TabsTrigger value="my-deals" className="flex items-center gap-2">
             <PieChart className="w-4 h-4" />
@@ -208,7 +525,13 @@ const Investments = () => {
         </TabsList>
 
         <TabsContent value="crowdfunding" className="space-y-4">
-          {filteredCrowdfunding.length === 0 ? (
+          {isLoading ? (
+            <Card className="p-12 text-center">
+              <TrendingUp className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading campaigns</h3>
+              <p className="text-gray-600">Fetching live investment opportunities.</p>
+            </Card>
+          ) : filteredCrowdfunding.length === 0 ? (
             <Card className="p-12 text-center">
               <TrendingUp className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No active campaigns</h3>
@@ -220,7 +543,9 @@ const Investments = () => {
                 <CrowdfundingCard
                   key={post.id}
                   post={post}
-                  onInvest={() => handleInvest(post)}
+                  onInvest={() => {
+                    void handleInvest(post);
+                  }}
                   comments={crowdfundingComments[post.id] || []}
                   currencySymbol={currencySymbol}
                 />
@@ -230,7 +555,13 @@ const Investments = () => {
         </TabsContent>
 
         <TabsContent value="investors" className="space-y-4">
-          {investorPosts.length === 0 ? (
+          {isLoading ? (
+            <Card className="p-12 text-center">
+              <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading investor profiles</h3>
+              <p className="text-gray-600">Fetching live deal-flow posts.</p>
+            </Card>
+          ) : filteredInvestorPosts.length === 0 ? (
             <Card className="p-12 text-center">
               <DollarSign className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No investors found</h3>
@@ -238,7 +569,7 @@ const Investments = () => {
             </Card>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
-              {investorPosts.map((post) => (
+              {filteredInvestorPosts.map((post) => (
                 <InvestorCard key={post.id} post={post} />
               ))}
             </div>
@@ -246,7 +577,13 @@ const Investments = () => {
         </TabsContent>
 
         <TabsContent value="investees" className="space-y-4">
-          {investeePosts.length === 0 ? (
+          {isLoading ? (
+            <Card className="p-12 text-center">
+              <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading founder requests</h3>
+              <p className="text-gray-600">Fetching live fundraising requests.</p>
+            </Card>
+          ) : filteredInvesteePosts.length === 0 ? (
             <Card className="p-12 text-center">
               <Target className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No investees found</h3>
@@ -254,7 +591,7 @@ const Investments = () => {
             </Card>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
-              {investeePosts.map((post) => (
+              {filteredInvesteePosts.map((post) => (
                 <InvesteeCard key={post.id} post={post} />
               ))}
             </div>
@@ -361,6 +698,12 @@ const Investments = () => {
                   </div>
                 </div>
 
+                {commitmentError ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    {commitmentError}
+                  </div>
+                ) : null}
+
                 {/* Investment Summary */}
                 <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                   <div className="flex justify-between">
@@ -386,12 +729,52 @@ const Investments = () => {
                   </div>
                 </div>
 
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">Investor Comments</p>
+                    {isCommentsLoading ? (
+                      <span className="text-xs text-muted-foreground">Loading...</span>
+                    ) : (
+                      <Badge variant="secondary">
+                        {(crowdfundingComments[selectedCampaign.id] || []).length}
+                      </Badge>
+                    )}
+                  </div>
+                  {isCommentsLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      Loading recent investor comments...
+                    </p>
+                  ) : (crowdfundingComments[selectedCampaign.id] || []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Be the first to comment after investing.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {(crowdfundingComments[selectedCampaign.id] || []).map((comment) => (
+                        <div key={comment.id} className="rounded-lg bg-muted/40 p-3">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>{comment.authorName}</span>
+                            <span>
+                              {currencySymbol(selectedCampaign.crowdfunding.currency)}
+                              {comment.amount.toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground mt-1">
+                            {comment.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <Button 
                   className="w-full bg-[var(--brand-secondary)]"
                   onClick={handleConfirmInvestment}
+                  disabled={isSubmittingCommitment}
                 >
                   <CheckCircle className="w-4 h-4 mr-2" />
-                  Confirm Investment
+                  {isSubmittingCommitment ? 'Confirming...' : 'Confirm Investment'}
                 </Button>
               </div>
             </>
@@ -460,7 +843,7 @@ const PitchAssets = ({ pitch }: PitchAssetsProps) => {
 };
 
 interface CrowdfundingCardProps {
-  post: any;
+  post: CrowdfundingPost;
   onInvest: () => void;
   comments: CrowdfundingComment[];
   currencySymbol: (currency?: string) => string;
@@ -593,7 +976,7 @@ const CrowdfundingCard = ({ post, onInvest, comments, currencySymbol }: Crowdfun
 };
 
 interface InvestorCardProps {
-  post: any;
+  post: InvestorPost;
 }
 
 const InvestorCard = ({ post }: InvestorCardProps) => (
@@ -664,7 +1047,7 @@ const InvestorCard = ({ post }: InvestorCardProps) => (
 );
 
 interface InvesteeCardProps {
-  post: any;
+  post: InvesteePost;
 }
 
 const InvesteeCard = ({ post }: InvesteeCardProps) => {

@@ -21,6 +21,87 @@ export const FeedPostMediaSchema = z.object({
   url: z.string(),
 });
 
+export const PitchAttachmentSchema = z.object({
+  name: z.string(),
+  url: z.string(),
+});
+
+export const PitchLinkSchema = z.object({
+  label: z.string(),
+  url: z.string(),
+});
+
+export const PitchInfoSchema = z.object({
+  videoUrl: z.string().optional(),
+  deckUrl: z.string().optional(),
+  attachments: z.array(PitchAttachmentSchema).optional(),
+  links: z.array(PitchLinkSchema).optional(),
+});
+
+export const ProductDetailsSchema = z.object({
+  name: z.string(),
+  price: z.number().nonnegative(),
+  currency: z.string(),
+  description: z.string(),
+  category: z.string(),
+  inStock: z.boolean(),
+  quantity: z.number().int().nonnegative().optional(),
+});
+
+export const ServiceDetailsSchema = z.object({
+  name: z.string(),
+  price: z.number().nonnegative(),
+  currency: z.string(),
+  priceType: z.enum(['hourly', 'project', 'monthly']),
+  description: z.string(),
+  category: z.string(),
+  availability: z.enum(['immediate', '1-week', '2-weeks', '1-month']),
+});
+
+export const CrowdfundingDetailsSchema = z.object({
+  target: z.number().nonnegative(),
+  raised: z.number().nonnegative(),
+  backers: z.number().int().nonnegative(),
+  daysLeft: z.number().int().nonnegative(),
+  minInvestment: z.number().nonnegative(),
+  maxInvestment: z.number().nonnegative().optional(),
+  currency: z.string().optional(),
+  equity: z.string().optional(),
+  pitch: PitchInfoSchema.optional(),
+});
+
+export const InvestmentDetailsSchema = z.object({
+  amount: z.object({
+    min: z.number().nonnegative(),
+    max: z.number().nonnegative(),
+  }),
+  stage: z.array(z.string()),
+  industries: z.array(z.string()),
+});
+
+export const InvestmentRequestDetailsSchema = z.object({
+  amount: z.object({
+    min: z.number().nonnegative(),
+    max: z.number().nonnegative(),
+  }),
+  stage: z.array(z.string()),
+  industries: z.array(z.string()),
+  pitch: PitchInfoSchema.optional(),
+  timeline: z.string().optional(),
+});
+
+export const MentorshipDetailsSchema = z.object({
+  expertise: z.array(z.string()),
+  commitment: z.enum(['full-time', 'part-time', 'ad-hoc']),
+  duration: z.string(),
+});
+
+export const PromoDetailsSchema = z.object({
+  discount: z.number().nonnegative(),
+  code: z.string(),
+  validUntil: z.string(),
+});
+
 export const FeedPostSchema = z.object({
   id: z.uuid(),
   userId: z.uuid(),
@@ -29,6 +110,14 @@ export const FeedPostSchema = z.object({
   content: z.string(),
   visibility: PostVisibilitySchema,
   media: z.array(FeedPostMediaSchema).default([]),
+  pitch: PitchInfoSchema.optional(),
+  product: ProductDetailsSchema.optional(),
+  service: ServiceDetailsSchema.optional(),
+  crowdfunding: CrowdfundingDetailsSchema.optional(),
+  investment: InvestmentDetailsSchema.optional(),
+  investmentRequest: InvestmentRequestDetailsSchema.optional(),
+  mentorship: MentorshipDetailsSchema.optional(),
+  promo: PromoDetailsSchema.optional(),
   likes: z.number().int().nonnegative(),
   loves: z.number().int().nonnegative(),
   interests: z.number().int().nonnegative(),
@@ -135,6 +224,16 @@ export const BookmarkDeleteResponseSchema = z.object({
 
 export type FeedPost = z.infer<typeof FeedPostSchema>;
 export type FeedPage = z.infer<typeof FeedPageSchema>;
+export type PitchAttachment = z.infer<typeof PitchAttachmentSchema>;
+export type PitchLink = z.infer<typeof PitchLinkSchema>;
+export type PitchInfo = z.infer<typeof PitchInfoSchema>;
+export type ProductDetails = z.infer<typeof ProductDetailsSchema>;
+export type ServiceDetails = z.infer<typeof ServiceDetailsSchema>;
+export type CrowdfundingDetails = z.infer<typeof CrowdfundingDetailsSchema>;
+export type InvestmentDetails = z.infer<typeof InvestmentDetailsSchema>;
+export type InvestmentRequestDetails = z.infer<typeof InvestmentRequestDetailsSchema>;
+export type MentorshipDetails = z.infer<typeof MentorshipDetailsSchema>;
+export type PromoDetails = z.infer<typeof PromoDetailsSchema>;
 export type CreatePostRequest = z.infer<typeof CreatePostRequestSchema>;
 export type TogglePostReactionRequest = z.infer<typeof TogglePostReactionRequestSchema>;
 export type TogglePostReactionResponse = z.infer<typeof TogglePostReactionResponseSchema>;

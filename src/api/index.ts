@@ -5,6 +5,7 @@ export * from './http';
 export * from './investments';
 export * from './marketing';
 export * from './marketplace';
+export * from './mentorship';
 export * from './messages';
 export * from './payments';
 export * from './posts';

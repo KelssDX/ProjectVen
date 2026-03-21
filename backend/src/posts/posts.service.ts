@@ -87,6 +87,100 @@ interface BookmarkRow {
   post_id: string | null;
 }
 
+interface ProductRow {
+  post_id: string;
+  name: string;
+  price: string | number;
+  currency: string;
+  description: string;
+  category: string;
+  in_stock: boolean;
+  quantity: number | null;
+}
+
+interface ServiceRow {
+  post_id: string;
+  name: string;
+  price: string | number;
+  currency: string;
+  price_type: 'hourly' | 'project' | 'monthly';
+  description: string;
+  category: string;
+  availability: 'immediate' | '1-week' | '2-weeks' | '1-month';
+}
+
+interface CrowdfundingRow {
+  post_id: string;
+  target_amount: string | number;
+  raised_amount: string | number;
+  backers_count: string | number;
+  ends_at: string | Date;
+  min_investment: string | number;
+  max_investment: string | number | null;
+  currency: string;
+  equity: string | null;
+}
+
+interface InvestmentOfferRow {
+  post_id: string;
+  amount_min: string | number;
+  amount_max: string | number;
+  stages: string[] | null;
+  industries: string[] | null;
+}
+
+interface InvestmentRequestRow {
+  post_id: string;
+  amount_min: string | number;
+  amount_max: string | number;
+  timeline: string | null;
+  stages: string[] | null;
+  industries: string[] | null;
+}
+
+interface MentorshipRow {
+  post_id: string;
+  commitment: 'full-time' | 'part-time' | 'ad-hoc';
+  duration: string;
+  expertise: string[] | null;
+}
+
+interface PromotionRow {
+  post_id: string;
+  discount_percent: string | number;
+  promo_code: string;
+  valid_until: string | Date;
+}
+
+interface PitchLinkRow {
+  label: string;
+  url: string;
+}
+
+interface PitchAttachmentRow {
+  name: string;
+  url: string;
+}
+
+interface PitchAssetRow {
+  post_id: string;
+  video_url: string | null;
+  deck_url: string | null;
+  links: PitchLinkRow[] | null;
+  attachments: PitchAttachmentRow[] | null;
+}
+
+interface TypedPostDetails {
+  productByPostId: Map<string, NonNullable<FeedPost['product']>>;
+  serviceByPostId: Map<string, NonNullable<FeedPost['service']>>;
+  crowdfundingByPostId: Map<string, NonNullable<FeedPost['crowdfunding']>>;
+  investmentByPostId: Map<string, NonNullable<FeedPost['investment']>>;
+  investmentRequestByPostId: Map<string, NonNullable<FeedPost['investmentRequest']>>;
+  mentorshipByPostId: Map<string, NonNullable<FeedPost['mentorship']>>;
+  promoByPostId: Map<string, NonNullable<FeedPost['promo']>>;
+  pitchByPostId: Map<string, NonNullable<FeedPost['pitch']>>;
+}
+
 @Injectable()
 export class PostsService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -201,8 +295,12 @@ export class PostsService {
 
     const hasMore = result.rows.length > options.limit;
     const rows = hasMore ? result.rows.slice(0, options.limit) : result.rows;
-    const mediaMap = await this.loadMediaMap(rows.map((row) => row.id));
-    const items = rows.map((row) => this.mapFeedPost(row, mediaMap));
+    const postIds = rows.map((row) => row.id);
+    const [mediaMap, typedPostDetails] = await Promise.all([
+      this.loadMediaMap(postIds),
+      this.loadTypedPostDetails(postIds),
+    ]);
+    const items = rows.map((row) => this.mapFeedPost(row, mediaMap, typedPostDetails));
 
     const nextCursor = hasMore
       ? this.encodeCursor({
@@ -1171,8 +1269,11 @@ export class PostsService {
       });
     }
 
-    const mediaMap = await this.loadMediaMap([row.id]);
-    return this.mapFeedPost(row, mediaMap);
+    const [mediaMap, typedPostDetails] = await Promise.all([
+      this.loadMediaMap([row.id]),
+      this.loadTypedPostDetails([row.id]),
+    ]);
+    return this.mapFeedPost(row, mediaMap, typedPostDetails);
   }
 
   private async loadMediaMap(postIds: string[]): Promise<Map<string, FeedPost['media']>> {
@@ -1206,10 +1307,292 @@ export class PostsService {
     return mediaMap;
   }
 
+  private async loadTypedPostDetails(postIds: string[]): Promise<TypedPostDetails> {
+    const emptyDetails = this.createEmptyTypedPostDetails();
+    if (postIds.length === 0) {
+      return emptyDetails;
+    }
+
+    const [
+      productResult,
+      serviceResult,
+      crowdfundingResult,
+      investmentOfferResult,
+      investmentRequestResult,
+      mentorshipResult,
+      promotionResult,
+      pitchResult,
+    ] = await Promise.all([
+      this.databaseService.query<ProductRow>(
+        `
+          SELECT
+            post_id,
+            name,
+            price,
+            currency,
+            description,
+            category,
+            in_stock,
+            quantity
+          FROM post_products
+          WHERE post_id = ANY($1::uuid[])
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<ServiceRow>(
+        `
+          SELECT
+            post_id,
+            name,
+            price,
+            currency,
+            price_type,
+            description,
+            category,
+            availability
+          FROM post_services
+          WHERE post_id = ANY($1::uuid[])
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<CrowdfundingRow>(
+        `
+          SELECT
+            post_id,
+            target_amount,
+            raised_amount,
+            backers_count,
+            ends_at,
+            min_investment,
+            max_investment,
+            currency,
+            equity
+          FROM post_crowdfunding
+          WHERE post_id = ANY($1::uuid[])
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<InvestmentOfferRow>(
+        `
+          SELECT
+            pio.post_id,
+            pio.amount_min,
+            pio.amount_max,
+            COALESCE(
+              array_agg(DISTINCT pios.stage) FILTER (WHERE pios.stage IS NOT NULL),
+              '{}'::text[]
+            ) AS stages,
+            COALESCE(
+              array_agg(DISTINCT pioi.industry) FILTER (WHERE pioi.industry IS NOT NULL),
+              '{}'::text[]
+            ) AS industries
+          FROM post_investment_offers pio
+          LEFT JOIN post_investment_offer_stages pios
+            ON pios.post_id = pio.post_id
+          LEFT JOIN post_investment_offer_industries pioi
+            ON pioi.post_id = pio.post_id
+          WHERE pio.post_id = ANY($1::uuid[])
+          GROUP BY pio.post_id, pio.amount_min, pio.amount_max
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<InvestmentRequestRow>(
+        `
+          SELECT
+            pir.post_id,
+            pir.amount_min,
+            pir.amount_max,
+            pir.timeline,
+            COALESCE(
+              array_agg(DISTINCT pirs.stage) FILTER (WHERE pirs.stage IS NOT NULL),
+              '{}'::text[]
+            ) AS stages,
+            COALESCE(
+              array_agg(DISTINCT piri.industry) FILTER (WHERE piri.industry IS NOT NULL),
+              '{}'::text[]
+            ) AS industries
+          FROM post_investment_requests pir
+          LEFT JOIN post_investment_request_stages pirs
+            ON pirs.post_id = pir.post_id
+          LEFT JOIN post_investment_request_industries piri
+            ON piri.post_id = pir.post_id
+          WHERE pir.post_id = ANY($1::uuid[])
+          GROUP BY pir.post_id, pir.amount_min, pir.amount_max, pir.timeline
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<MentorshipRow>(
+        `
+          SELECT
+            pmr.post_id,
+            pmr.commitment,
+            pmr.duration,
+            COALESCE(
+              array_agg(DISTINCT pme.expertise) FILTER (WHERE pme.expertise IS NOT NULL),
+              '{}'::text[]
+            ) AS expertise
+          FROM post_mentorship_requests pmr
+          LEFT JOIN post_mentorship_expertise pme
+            ON pme.post_id = pmr.post_id
+          WHERE pmr.post_id = ANY($1::uuid[])
+          GROUP BY pmr.post_id, pmr.commitment, pmr.duration
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<PromotionRow>(
+        `
+          SELECT
+            post_id,
+            discount_percent,
+            promo_code,
+            valid_until
+          FROM post_promotions
+          WHERE post_id = ANY($1::uuid[])
+        `,
+        [postIds],
+      ),
+      this.databaseService.query<PitchAssetRow>(
+        `
+          SELECT DISTINCT ON (ppa.post_id)
+            ppa.post_id,
+            ppa.video_url,
+            ppa.deck_url,
+            COALESCE(
+              (
+                SELECT jsonb_agg(
+                  jsonb_build_object('label', ppl.label, 'url', ppl.url)
+                  ORDER BY ppl.id
+                )
+                FROM post_pitch_links ppl
+                WHERE ppl.pitch_asset_id = ppa.id
+              ),
+              '[]'::jsonb
+            ) AS links,
+            COALESCE(
+              (
+                SELECT jsonb_agg(
+                  jsonb_build_object('name', ppa2.name, 'url', ppa2.url)
+                  ORDER BY ppa2.id
+                )
+                FROM post_pitch_attachments ppa2
+                WHERE ppa2.pitch_asset_id = ppa.id
+              ),
+              '[]'::jsonb
+            ) AS attachments
+          FROM post_pitch_assets ppa
+          WHERE ppa.post_id = ANY($1::uuid[])
+          ORDER BY ppa.post_id, ppa.created_at DESC, ppa.id DESC
+        `,
+        [postIds],
+      ),
+    ]);
+
+    for (const row of productResult.rows) {
+      emptyDetails.productByPostId.set(row.post_id, {
+        name: row.name,
+        price: this.toNumber(row.price),
+        currency: row.currency,
+        description: row.description,
+        category: row.category,
+        inStock: row.in_stock,
+        quantity: row.quantity ?? undefined,
+      });
+    }
+
+    for (const row of serviceResult.rows) {
+      emptyDetails.serviceByPostId.set(row.post_id, {
+        name: row.name,
+        price: this.toNumber(row.price),
+        currency: row.currency,
+        priceType: row.price_type,
+        description: row.description,
+        category: row.category,
+        availability: row.availability,
+      });
+    }
+
+    for (const row of crowdfundingResult.rows) {
+      emptyDetails.crowdfundingByPostId.set(row.post_id, {
+        target: this.toNumber(row.target_amount),
+        raised: this.toNumber(row.raised_amount),
+        backers: this.toCount(row.backers_count),
+        daysLeft: this.calculateDaysLeft(row.ends_at),
+        minInvestment: this.toNumber(row.min_investment),
+        maxInvestment: this.toOptionalNumber(row.max_investment),
+        currency: row.currency,
+        equity: row.equity ?? undefined,
+      });
+    }
+
+    for (const row of investmentOfferResult.rows) {
+      emptyDetails.investmentByPostId.set(row.post_id, {
+        amount: {
+          min: this.toNumber(row.amount_min),
+          max: this.toNumber(row.amount_max),
+        },
+        stage: row.stages ?? [],
+        industries: row.industries ?? [],
+      });
+    }
+
+    for (const row of investmentRequestResult.rows) {
+      emptyDetails.investmentRequestByPostId.set(row.post_id, {
+        amount: {
+          min: this.toNumber(row.amount_min),
+          max: this.toNumber(row.amount_max),
+        },
+        stage: row.stages ?? [],
+        industries: row.industries ?? [],
+        timeline: row.timeline ?? undefined,
+      });
+    }
+
+    for (const row of mentorshipResult.rows) {
+      emptyDetails.mentorshipByPostId.set(row.post_id, {
+        expertise: row.expertise ?? [],
+        commitment: row.commitment,
+        duration: row.duration,
+      });
+    }
+
+    for (const row of promotionResult.rows) {
+      emptyDetails.promoByPostId.set(row.post_id, {
+        discount: this.toNumber(row.discount_percent),
+        code: row.promo_code,
+        validUntil: this.toIsoTimestamp(row.valid_until),
+      });
+    }
+
+    for (const row of pitchResult.rows) {
+      const pitch: NonNullable<FeedPost['pitch']> = {
+        videoUrl: row.video_url ?? undefined,
+        deckUrl: row.deck_url ?? undefined,
+        links: row.links ?? [],
+        attachments: row.attachments ?? [],
+      };
+
+      if (
+        pitch.videoUrl ||
+        pitch.deckUrl ||
+        (pitch.links?.length ?? 0) > 0 ||
+        (pitch.attachments?.length ?? 0) > 0
+      ) {
+        emptyDetails.pitchByPostId.set(row.post_id, pitch);
+      }
+    }
+
+    return emptyDetails;
+  }
+
   private mapFeedPost(
     row: FeedPostRow,
     mediaMap: Map<string, FeedPost['media']>,
+    typedPostDetails: TypedPostDetails,
   ): FeedPost {
+    const pitch = typedPostDetails.pitchByPostId.get(row.id);
+    const crowdfunding = typedPostDetails.crowdfundingByPostId.get(row.id);
+    const investmentRequest = typedPostDetails.investmentRequestByPostId.get(row.id);
+
     return {
       id: row.id,
       userId: row.user_id,
@@ -1224,6 +1607,16 @@ export class PostsService {
       content: row.content,
       visibility: row.visibility,
       media: mediaMap.get(row.id) ?? [],
+      pitch,
+      product: typedPostDetails.productByPostId.get(row.id),
+      service: typedPostDetails.serviceByPostId.get(row.id),
+      crowdfunding: crowdfunding ? { ...crowdfunding, pitch } : undefined,
+      investment: typedPostDetails.investmentByPostId.get(row.id),
+      investmentRequest: investmentRequest
+        ? { ...investmentRequest, pitch }
+        : undefined,
+      mentorship: typedPostDetails.mentorshipByPostId.get(row.id),
+      promo: typedPostDetails.promoByPostId.get(row.id),
       likes: this.toCount(row.likes_count),
       loves: this.toCount(row.loves_count),
       interests: this.toCount(row.interests_count),
@@ -1274,8 +1667,43 @@ export class PostsService {
     };
   }
 
-  private toCount(value: string | number): number {
+  private createEmptyTypedPostDetails(): TypedPostDetails {
+    return {
+      productByPostId: new Map(),
+      serviceByPostId: new Map(),
+      crowdfundingByPostId: new Map(),
+      investmentByPostId: new Map(),
+      investmentRequestByPostId: new Map(),
+      mentorshipByPostId: new Map(),
+      promoByPostId: new Map(),
+      pitchByPostId: new Map(),
+    };
+  }
+
+  private calculateDaysLeft(value: string | Date): number {
+    const endsAt = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    const millisecondsLeft = endsAt - Date.now();
+    if (millisecondsLeft <= 0) {
+      return 0;
+    }
+
+    return Math.ceil(millisecondsLeft / (24 * 60 * 60 * 1000));
+  }
+
+  private toOptionalNumber(value: string | number | null | undefined): number | undefined {
+    if (value === null || value === undefined) {
+      return undefined;
+    }
+
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private toNumber(value: string | number): number {
+    return typeof value === 'number' ? value : Number(value);
+  }
+
+  private toCount(value: string | number): number {
+    return this.toNumber(value);
   }
 
   private toIsoTimestamp(value: string | Date): string {

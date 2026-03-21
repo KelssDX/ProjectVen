@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Progress } from '@/components/ui/progress';
 import { useCalendarPanel } from '@/context/CalendarPanelContext';
+import { useCalendarRuntime } from '@/lib/calendar-runtime';
 import { profileService } from '@/services/profileService';
 import type { TrendingBusiness } from '@/types';
-import { calendarEvents, type CalendarEvent } from '@/data/mockCalendar';
+import { type CalendarEvent } from '@/data/mockCalendar';
 import { recordBriefboardVisit } from '@/utils/briefboard';
 import {
   Users,
@@ -77,6 +78,7 @@ const Dashboard = () => {
   const [trending, setTrending] = useState<TrendingBusiness[]>([]);
   const [isTrendingLoading, setIsTrendingLoading] = useState(true);
   const { openPanel } = useCalendarPanel();
+  const { events: calendarEvents } = useCalendarRuntime();
 
   useEffect(() => {
     const hour = new Date().getHours();

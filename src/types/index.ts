@@ -146,7 +146,7 @@ export interface MarketingCampaign {
     end: Date;
   };
   budget: number;
-  status: 'draft' | 'active' | 'paused' | 'completed';
+  status: 'draft' | 'active' | 'paused' | 'completed' | 'cancelled';
   impressions: number;
   clicks: number;
   conversions: number;

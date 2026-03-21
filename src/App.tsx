@@ -18,6 +18,7 @@ import Bookmarks from './pages/dashboard/Bookmarks';
 import Settings from './pages/dashboard/Settings';
 import Profile from './pages/dashboard/Profile';
 import CalendarPage from './pages/dashboard/Calendar';
+import CalendarOAuthCallback from './pages/dashboard/CalendarOAuthCallback';
 import { loadBriefboardSettings, shouldShowBriefboard } from '@/utils/briefboard';
 
 // Profile Pages
@@ -129,6 +130,7 @@ const AppRoutes = () => {
         <Route index element={<BriefboardGate />} />
         <Route path="briefboard" element={<Dashboard />} />
         <Route path="calendar" element={<CalendarPage />} />
+        <Route path="calendar/oauth/:provider" element={<CalendarOAuthCallback />} />
         <Route path="profiles" element={<ProfileDirectory />} />
         <Route path="profiles/:id" element={<ProfileDetail />} />
         <Route path="profile" element={<Profile />} />

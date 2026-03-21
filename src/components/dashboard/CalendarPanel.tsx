@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { useCalendarRuntime } from '@/lib/calendar-runtime';
 import { Separator } from '@/components/ui/separator';
 import {
   CalendarDays,
@@ -20,8 +21,6 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  calendarEvents,
-  calendarIntegrations,
   type CalendarEvent,
   type CalendarEventType,
 } from '@/data/mockCalendar';
@@ -44,8 +43,17 @@ const typeIcons: Record<CalendarEventType, LucideIcon> = {
 
 const CalendarPanel = () => {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [events, setEvents] = useState<CalendarEvent[]>(calendarEvents);
-  const [integrations, setIntegrations] = useState(calendarIntegrations);
+  const {
+    addEventToVendromCalendar,
+    actionError,
+    createEvent: persistCalendarEvent,
+    disconnectIntegration: persistIntegrationDisconnect,
+    events,
+    integrations,
+    isLoading,
+    loadError,
+    startOauthIntegration,
+  } = useCalendarRuntime();
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDate, setNewEventDate] = useState<Date | undefined>();
   const [newEventTime, setNewEventTime] = useState('');
@@ -66,17 +74,16 @@ const CalendarPanel = () => {
       .slice(0, 5);
   }, [events]);
 
-  const handleQuickAdd = (event: CalendarEvent) => {
-    const clonedEvent: CalendarEvent = {
-      ...event,
-      id: `event-${Date.now()}`,
-      source: 'vendrom',
-    };
-    setEvents((prev) => [clonedEvent, ...prev]);
-    setSelectedDate(event.start);
+  const handleQuickAdd = async (event: CalendarEvent) => {
+    try {
+      const addedEvent = await addEventToVendromCalendar(event);
+      setSelectedDate(addedEvent.start);
+    } catch {
+      setSelectedDate(event.start);
+    }
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!newEventTitle || !newEventDate) return;
 
     const date = new Date(newEventDate);
@@ -85,41 +92,40 @@ const CalendarPanel = () => {
       date.setHours(hours, minutes || 0, 0, 0);
     }
 
-    const timeLabel = newEventTime
-      ? format(date, 'h:mm a')
-      : 'All day';
+    try {
+      await persistCalendarEvent({
+        title: newEventTitle,
+        description: newEventLocation ? `Location: ${newEventLocation}` : undefined,
+        location: newEventLocation || undefined,
+        start: date,
+        type: 'event',
+        link: '/dashboard/briefboard',
+      });
 
-    const newEvent: CalendarEvent = {
-      id: `event-${Date.now()}`,
-      title: newEventTitle,
-      description: newEventLocation ? `Location: ${newEventLocation}` : undefined,
-      location: newEventLocation || undefined,
-      start: date,
-      timeLabel,
-      type: 'event',
-      source: 'vendrom',
-      link: '/dashboard/briefboard',
-    };
-
-    setEvents((prev) => [newEvent, ...prev]);
-    setNewEventTitle('');
-    setNewEventDate(undefined);
-    setNewEventTime('');
-    setNewEventLocation('');
+      setNewEventTitle('');
+      setNewEventDate(undefined);
+      setNewEventTime('');
+      setNewEventLocation('');
+    } catch {
+      // Hook error state drives the inline message.
+    }
   };
 
-  const toggleIntegration = (id: typeof integrations[number]['id']) => {
-    setIntegrations((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              connected: !item.connected,
-              lastSync: item.connected ? undefined : 'Just now',
-            }
-          : item
-      )
-    );
+  const handleToggleIntegration = async (id: typeof integrations[number]['id']) => {
+    try {
+      const current = integrations.find((item) => item.id === id);
+      if (current?.connected) {
+        await persistIntegrationDisconnect(id);
+        return;
+      }
+
+      const authUrl = await startOauthIntegration(id);
+      if (authUrl) {
+        window.location.assign(authUrl);
+      }
+    } catch {
+      // Hook error state drives the inline message.
+    }
   };
 
   return (
@@ -133,6 +139,13 @@ const CalendarPanel = () => {
           <CardDescription>Events and bookings across the platform</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {(isLoading || loadError || actionError) && (
+            <div className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              {isLoading
+                ? 'Loading live calendar data...'
+                : actionError ?? loadError}
+            </div>
+          )}
           <Calendar
             mode="single"
             selected={selectedDate}
@@ -250,7 +263,7 @@ const CalendarPanel = () => {
               <Button
                 size="sm"
                 variant={integration.connected ? 'outline' : 'default'}
-                onClick={() => toggleIntegration(integration.id)}
+                onClick={() => void handleToggleIntegration(integration.id)}
               >
                 {integration.connected ? 'Disconnect' : 'Connect'}
               </Button>

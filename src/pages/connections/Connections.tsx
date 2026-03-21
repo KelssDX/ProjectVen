@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/context/AuthContext';
 import { connectionsApi } from '@/api/connections';
-import { mockConnections, connectionUsers } from '@/data/mockMessages';
 import type { Connection } from '@/types';
 import {
   Users,
@@ -27,8 +26,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-
-const USE_REAL_MESSAGES = import.meta.env.VITE_FEATURE_USE_REAL_MESSAGES === 'true';
 
 interface ConnectionDisplayUser {
   id: string;
@@ -51,21 +48,9 @@ const Connections = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [connections, setConnections] = useState<Connection[]>(mockConnections);
-  const [usersById, setUsersById] = useState<Record<string, ConnectionDisplayUser>>(
-    () =>
-      connectionUsers.reduce<Record<string, ConnectionDisplayUser>>((acc, item) => {
-        acc[item.id] = {
-          id: item.id,
-          name: item.name,
-          company: item.company,
-          avatar: item.avatar,
-          role: item.role,
-        };
-        return acc;
-      }, {}),
-  );
-  const [isLoading, setIsLoading] = useState(USE_REAL_MESSAGES);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [usersById, setUsersById] = useState<Record<string, ConnectionDisplayUser>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [suggestedConnections] = useState([
     {
@@ -98,11 +83,6 @@ const Connections = () => {
   ]);
 
   useEffect(() => {
-    if (!USE_REAL_MESSAGES) {
-      setIsLoading(false);
-      return;
-    }
-
     let isCancelled = false;
 
     const loadConnections = async () => {
@@ -140,8 +120,9 @@ const Connections = () => {
       } catch (error) {
         if (isCancelled) return;
         console.error('Failed to load connections from API:', error);
-        setLoadError('Unable to load live connections. Showing fallback data.');
-        setConnections(mockConnections);
+        setLoadError('Unable to load connections right now.');
+        setConnections([]);
+        setUsersById({});
       } finally {
         if (!isCancelled) {
           setIsLoading(false);
@@ -180,31 +161,35 @@ const Connections = () => {
   };
 
   const handleAccept = async (connectionId: string) => {
-    if (USE_REAL_MESSAGES) {
-      try {
-        await connectionsApi.acceptConnection(connectionId);
-      } catch (error) {
-        console.error('Failed to accept connection:', error);
-      }
+    try {
+      await connectionsApi.acceptConnection(connectionId);
+    } catch (error) {
+      console.error('Failed to accept connection:', error);
     }
 
-    setConnections(connections.map((c) =>
-      c.id === connectionId ? { ...c, status: 'accepted' as const } : c,
-    ));
+    setConnections((previousState) =>
+      previousState.map((connection) =>
+        connection.id === connectionId
+          ? { ...connection, status: 'accepted' as const }
+          : connection,
+      ),
+    );
   };
 
   const handleReject = async (connectionId: string) => {
-    if (USE_REAL_MESSAGES) {
-      try {
-        await connectionsApi.rejectConnection(connectionId);
-      } catch (error) {
-        console.error('Failed to reject connection:', error);
-      }
+    try {
+      await connectionsApi.rejectConnection(connectionId);
+    } catch (error) {
+      console.error('Failed to reject connection:', error);
     }
 
-    setConnections(connections.map((c) =>
-      c.id === connectionId ? { ...c, status: 'rejected' as const } : c,
-    ));
+    setConnections((previousState) =>
+      previousState.map((connection) =>
+        connection.id === connectionId
+          ? { ...connection, status: 'rejected' as const }
+          : connection,
+      ),
+    );
   };
 
   const getOtherUser = (connection: Connection) => {
@@ -240,10 +225,16 @@ const Connections = () => {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Send Message
-                    </DropdownMenuItem>
+                    {connection.status === 'accepted' && (
+                      <DropdownMenuItem
+                        onClick={() =>
+                          navigate(`/dashboard/messages?connectionId=${connection.id}`)
+                        }
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Send Message
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem>
                       <Briefcase className="w-4 h-4 mr-2" />
                       View Profile
@@ -317,15 +308,15 @@ const Connections = () => {
         </Button>
       </div>
 
-      {USE_REAL_MESSAGES && isLoading && (
+      {isLoading && (
         <Card>
           <CardContent className="p-4 text-sm text-muted-foreground">
-            Loading live connections...
+            Loading connections...
           </CardContent>
         </Card>
       )}
 
-      {USE_REAL_MESSAGES && loadError && (
+      {loadError && (
         <Card>
           <CardContent className="p-4 text-sm text-amber-700">
             {loadError}

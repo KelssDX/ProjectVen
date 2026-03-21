@@ -5,10 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { postsApi } from '@/api/posts';
 import { profileService } from '@/services/profileService';
 import { industries } from '@/data/mockProfiles';
 import { mockPosts } from '@/data/mockPosts';
-import type { TrendingBusiness } from '@/types';
+import { mapPostDtoToUi } from '@/lib/post-mappers';
+import type { Post, TrendingBusiness } from '@/types';
 import {
   TrendingUp,
   Eye,
@@ -25,11 +27,20 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+const USE_REAL_FEED = import.meta.env.VITE_FEATURE_USE_REAL_FEED === 'true';
+const compactNumberFormatter = new Intl.NumberFormat('en', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
 const Trending = () => {
   const [trending, setTrending] = useState<TrendingBusiness[]>([]);
   const [filteredTrending, setFilteredTrending] = useState<TrendingBusiness[]>([]);
+  const [posts, setPosts] = useState<Post[]>(USE_REAL_FEED ? [] : mockPosts);
   const [selectedIndustry, setSelectedIndustry] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [isPostsLoading, setIsPostsLoading] = useState(USE_REAL_FEED);
+  const [postsError, setPostsError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTrending = async () => {
@@ -48,6 +59,45 @@ const Trending = () => {
   }, []);
 
   useEffect(() => {
+    if (!USE_REAL_FEED) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPosts = async () => {
+      setIsPostsLoading(true);
+      setPostsError(null);
+      try {
+        const { data } = await postsApi.getFeed({ limit: 100 });
+        if (cancelled) {
+          return;
+        }
+
+        setPosts(data.items.map(mapPostDtoToUi));
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error('Error loading trending posts:', error);
+        setPostsError('Unable to load live post trends. Showing fallback data.');
+        setPosts(mockPosts);
+      } finally {
+        if (!cancelled) {
+          setIsPostsLoading(false);
+        }
+      }
+    };
+
+    void loadPosts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (selectedIndustry === 'all') {
       setFilteredTrending(trending);
     } else {
@@ -58,19 +108,19 @@ const Trending = () => {
   }, [selectedIndustry, trending]);
 
   const viralPosts = useMemo(() => {
-    const score = (post: typeof mockPosts[number]) =>
+    const score = (post: Post) =>
       post.likes +
       post.comments +
       post.shares +
       (post.reposts ?? 0) +
       (post.loves ?? 0);
-    return [...mockPosts]
+    return [...posts]
       .sort((a, b) => score(b) - score(a))
       .slice(0, 4);
-  }, []);
+  }, [posts]);
 
   const crowdfundingPosts = useMemo(() => {
-    return mockPosts
+    return posts
       .filter((post) => post.type === 'crowdfunding' && post.crowdfunding)
       .sort((a, b) => {
         const aRatio = (a.crowdfunding?.raised ?? 0) / (a.crowdfunding?.target ?? 1);
@@ -78,10 +128,10 @@ const Trending = () => {
         return bRatio - aRatio;
       })
       .slice(0, 3);
-  }, []);
+  }, [posts]);
 
   const marketplacePosts = useMemo(() => {
-    return mockPosts
+    return posts
       .filter((post) => post.product || post.service)
       .sort((a, b) => {
         const aScore = (a.bookmarks ?? 0) + (a.interests ?? 0);
@@ -89,14 +139,26 @@ const Trending = () => {
         return bScore - aScore;
       })
       .slice(0, 3);
-  }, []);
+  }, [posts]);
 
   const entrepreneurPosts = useMemo(() => {
-    return mockPosts
+    return posts
       .filter((post) => post.author.userType === 'entrepreneur')
       .sort((a, b) => b.likes - a.likes)
       .slice(0, 3);
-  }, []);
+  }, [posts]);
+
+  const totalViewsThisWeek = useMemo(
+    () => trending.reduce((sum, item) => sum + item.viewsLastWeek, 0),
+    [trending],
+  );
+
+  const totalConnectionsThisWeek = useMemo(
+    () => trending.reduce((sum, item) => sum + item.connectionsLastWeek, 0),
+    [trending],
+  );
+
+  const topMomentumScore = trending[0]?.score ?? 0;
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Trophy className="w-5 h-5 text-yellow-500" />;
@@ -137,7 +199,9 @@ const Trending = () => {
               </div>
               <div>
                 <p className="text-white/80 text-sm">Total Views This Week</p>
-                <p className="text-2xl font-bold">24.5K</p>
+                <p className="text-2xl font-bold">
+                  {compactNumberFormatter.format(totalViewsThisWeek)}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -150,7 +214,9 @@ const Trending = () => {
               </div>
               <div>
                 <p className="text-white/80 text-sm">New Connections</p>
-                <p className="text-2xl font-bold">1,234</p>
+                <p className="text-2xl font-bold">
+                  {compactNumberFormatter.format(totalConnectionsThisWeek)}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -162,8 +228,8 @@ const Trending = () => {
                 <Star className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-white/80 text-sm">Top Rated</p>
-                <p className="text-2xl font-bold">4.8/5</p>
+                <p className="text-white/80 text-sm">Top Momentum Score</p>
+                <p className="text-2xl font-bold">{topMomentumScore}</p>
               </div>
             </div>
           </CardContent>
@@ -291,6 +357,12 @@ const Trending = () => {
         )}
       </div>
 
+      {USE_REAL_FEED && postsError && (
+        <Card>
+          <CardContent className="p-4 text-sm text-amber-700">{postsError}</CardContent>
+        </Card>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
           <CardContent className="p-6 space-y-4">
@@ -299,7 +371,11 @@ const Trending = () => {
               <h3 className="font-bold text-gray-900">Viral Posts</h3>
             </div>
             <div className="space-y-4">
-              {viralPosts.map((post) => (
+              {isPostsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading live post trends...</p>
+              ) : viralPosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No trending posts yet.</p>
+              ) : viralPosts.map((post) => (
                 <div key={post.id} className="flex items-start gap-3">
                   <Avatar className="w-10 h-10">
                     <AvatarImage src={post.author.avatar} />
@@ -344,7 +420,11 @@ const Trending = () => {
               <h3 className="font-bold text-gray-900">Crowdfunding Momentum</h3>
             </div>
             <div className="space-y-4">
-              {crowdfundingPosts.map((post) => {
+              {isPostsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading live campaigns...</p>
+              ) : crowdfundingPosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No live crowdfunding campaigns yet.</p>
+              ) : crowdfundingPosts.map((post) => {
                 const ratio = (post.crowdfunding?.raised ?? 0) / (post.crowdfunding?.target ?? 1);
                 return (
                   <div key={post.id} className="rounded-lg border border-border/60 p-4">
@@ -378,7 +458,11 @@ const Trending = () => {
               <h3 className="font-bold text-gray-900">Entrepreneurs To Watch</h3>
             </div>
             <div className="space-y-4">
-              {entrepreneurPosts.map((post) => (
+              {isPostsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading entrepreneur activity...</p>
+              ) : entrepreneurPosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No entrepreneur posts yet.</p>
+              ) : entrepreneurPosts.map((post) => (
                 <div key={post.id} className="flex items-start gap-3">
                   <Avatar className="w-10 h-10">
                     <AvatarImage src={post.author.avatar} />
@@ -414,7 +498,11 @@ const Trending = () => {
               <h3 className="font-bold text-gray-900">Marketplace Hot Picks</h3>
             </div>
             <div className="space-y-4">
-              {marketplacePosts.map((post) => (
+              {isPostsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading marketplace activity...</p>
+              ) : marketplacePosts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No marketplace posts yet.</p>
+              ) : marketplacePosts.map((post) => (
                 <div key={post.id} className="flex items-start gap-3 rounded-lg border border-border/60 p-4">
                   <div className="flex-1">
                     <p className="text-sm font-semibold">
