@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -p tsconfig.prod.json && npm run typecheck:functions && vite build",
+    "lint:prod": "eslint src/App.tsx src/main.tsx src/pages/coming-soon functions",
+    "test:functions": "tsc -p functions/tsconfig.test.json && node --test functions/**/*.test.mjs",
+    "typecheck:functions": "tsc -p functions/tsconfig.json",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -1,6 +1,6 @@
 # Vendrome Production Coming-Soon Plan
 
-Status: Plan complete; implementation not yet started  
+Status: Launch page and waitlist implementation complete; Cloudflare setup pending
 Production branch: `prod` (created from clean `main`)  
 Target domain: `vendrome.com`  
 Hosting target: Cloudflare Pages with Git-based automatic deployments
@@ -106,35 +106,35 @@ A versioned SQL migration will create the table and useful indexes. A short admi
 
 ### Phase B — Dedicated launch-page build
 
-- [ ] Add a dedicated production coming-soon page and styles.
-- [ ] Reuse approved existing Vendrome assets; optimize any images used.
-- [ ] Ensure unfinished application routes and code are not included in the deployed entry bundle.
-- [ ] Route all non-API browser paths back to the coming-soon page.
-- [ ] Add responsive behavior for small phones through large desktop screens.
-- [ ] Add accessible semantics, labels, focus states, keyboard flow, and reduced-motion behavior.
-- [ ] Add SEO/social metadata, favicon, canonical URL, theme color, and a useful no-JavaScript fallback.
-- [ ] Add production security and caching headers compatible with Turnstile.
+- [x] Add a dedicated production coming-soon page and styles.
+- [x] Reuse approved existing Vendrome assets and verify the launch image budget.
+- [x] Ensure unfinished application routes and code are not included in the deployed entry bundle.
+- [x] Route all non-API browser paths back to the coming-soon page.
+- [x] Add responsive behavior for small phones through large desktop screens.
+- [x] Add accessible semantics, labels, focus states, keyboard flow, and reduced-motion behavior.
+- [x] Add SEO/social metadata, favicon, canonical URL, theme color, and a useful no-JavaScript fallback.
+- [x] Add production security and caching headers compatible with Turnstile.
 
 ### Phase C — Functional waitlist
 
-- [ ] Add the client-side form and accessible status messaging.
-- [ ] Add a same-origin Cloudflare Pages Function at `/api/waitlist`.
-- [ ] Add strict server validation, field length limits, allow-listed role/interest values, and duplicate handling.
-- [ ] Add a hidden honeypot and Turnstile integration.
-- [ ] Add the D1 migration for `waitlist_signups`.
-- [ ] Add local/test configuration with Cloudflare's published Turnstile test keys; keep live secrets out of Git.
-- [ ] Add concise privacy/consent copy and link to a privacy notice or launch privacy section.
-- [ ] Document signup review/export steps.
+- [x] Add the client-side form and accessible status messaging.
+- [x] Add a same-origin Cloudflare Pages Function at `/api/waitlist`.
+- [x] Add strict server validation, field length limits, allow-listed role/interest values, and duplicate handling.
+- [x] Add a hidden honeypot and Turnstile integration.
+- [x] Add the D1 migration for `waitlist_signups`.
+- [x] Add local/test configuration with Cloudflare's published Turnstile test keys; keep live secrets out of Git.
+- [x] Add concise privacy/consent copy for the launch waitlist.
+- [x] Document signup review/export steps.
 
 ### Phase D — Verification
 
-- [ ] Run TypeScript, lint, and production build checks.
+- [x] Run TypeScript, lint, and production build checks.
 - [ ] Test the Pages Function locally with a local D1 database.
 - [ ] Test valid, invalid, duplicate, bot-field, expired-token, and server-error submission paths.
-- [ ] Verify no dashboard/auth/unfinished routes are present in or reachable from the production build.
+- [x] Verify no dashboard/auth/unfinished routes are present in or reachable from the production build.
 - [ ] Inspect the page visually at mobile, tablet, laptop, and wide-desktop sizes.
 - [ ] Check keyboard navigation, contrast, reduced motion, and basic screen-reader announcements.
-- [ ] Check metadata and social sharing preview assets.
+- [x] Check metadata and social sharing preview assets.
 - [ ] Review final copy with the owner.
 
 ### Phase E — GitHub and Cloudflare launch

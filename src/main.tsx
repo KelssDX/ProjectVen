@@ -1,16 +1,16 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-import { ThemeProvider } from './context/ThemeContext'
-import { BookmarkProvider } from './context/BookmarkContext'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+import './pages/coming-soon/coming-soon.css';
 
-createRoot(document.getElementById('root')!).render(
+const root = document.getElementById('root');
+
+if (!root) {
+  throw new Error('Vendrome launch root element was not found.');
+}
+
+createRoot(root).render(
   <StrictMode>
-    <ThemeProvider>
-      <BookmarkProvider>
-        <App />
-      </BookmarkProvider>
-    </ThemeProvider>
+    <App />
   </StrictMode>,
-)
+);

@@ -1,0 +1,17 @@
+{
+  "name": "Vendrome",
+  "short_name": "Vendrome",
+  "description": "The social economy for people building, backing, and growing what comes next.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f2ed",
+  "theme_color": "#07101f",
+  "icons": [
+    {
+      "src": "/vendrome-tab-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

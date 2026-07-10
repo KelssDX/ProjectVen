@@ -1,0 +1,3 @@
+# Cloudflare Pages Functions local secret values. Copy to .dev.vars; never commit .dev.vars.
+# This is Cloudflare's published always-pass test secret and is safe only for local testing.
+TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
