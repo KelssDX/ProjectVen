@@ -257,6 +257,10 @@ function ComingSoonPage() {
           email: readFormValue(formData, 'email'),
           role: readFormValue(formData, 'role'),
           interest: readFormValue(formData, 'interest'),
+          organisation: readFormValue(formData, 'organisation'),
+          country: readFormValue(formData, 'country'),
+          profileUrl: readFormValue(formData, 'profileUrl'),
+          note: readFormValue(formData, 'note'),
           company: readFormValue(formData, 'company'),
           consent: formData.get('consent') === 'on',
           turnstileToken,
@@ -409,6 +413,48 @@ function ComingSoonPage() {
                     <option value="" disabled>What brings you here?</option>
                     {INTEREST_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
                   </select>
+                </label>
+
+                <label className="cs-field">
+                  <span>Business or organisation</span>
+                  <input
+                    name="organisation"
+                    autoComplete="organization"
+                    maxLength={120}
+                    placeholder="Optional"
+                  />
+                </label>
+
+                <label className="cs-field">
+                  <span>Country or region</span>
+                  <input
+                    name="country"
+                    autoComplete="country-name"
+                    maxLength={80}
+                    placeholder="Auto-detected if left blank"
+                  />
+                </label>
+
+                <label className="cs-field cs-field-wide">
+                  <span>Website or LinkedIn</span>
+                  <input
+                    name="profileUrl"
+                    type="url"
+                    inputMode="url"
+                    autoComplete="url"
+                    maxLength={300}
+                    placeholder="https:// (optional)"
+                  />
+                </label>
+
+                <label className="cs-field cs-field-wide">
+                  <span>Anything you want us to know?</span>
+                  <textarea
+                    name="note"
+                    rows={2}
+                    maxLength={600}
+                    placeholder="Optional — what you hope to find or contribute"
+                  />
                 </label>
 
                 <label className="cs-honeypot" aria-hidden="true">

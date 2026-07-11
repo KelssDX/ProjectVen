@@ -851,8 +851,13 @@ img {
   text-transform: uppercase;
 }
 
+.cs-field-wide {
+  grid-column: 1 / -1;
+}
+
 .cs-field input,
-.cs-field select {
+.cs-field select,
+.cs-field textarea {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -862,7 +867,13 @@ img {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.cs-field input::placeholder {
+.cs-field textarea {
+  resize: vertical;
+  min-height: 58px;
+}
+
+.cs-field input::placeholder,
+.cs-field textarea::placeholder {
   color: var(--slate-400);
 }
 
@@ -880,7 +891,8 @@ img {
 }
 
 .cs-field input:focus-visible,
-.cs-field select:focus-visible {
+.cs-field select:focus-visible,
+.cs-field textarea:focus-visible {
   outline: none;
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);

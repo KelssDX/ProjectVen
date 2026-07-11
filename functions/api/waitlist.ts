@@ -188,6 +188,21 @@ async function verifyTurnstile(token: string, secret: string): Promise<boolean> 
   return result.success && (!result.action || result.action === 'waitlist');
 }
 
+function countryFromRequest(request: Request): string | null {
+  // Cloudflare stamps every proxied request with the visitor's ISO country code.
+  // 'XX' means unknown and 'T1' is the Tor network; neither is a real location.
+  const code = request.headers.get('CF-IPCountry');
+  if (!code || code === 'XX' || code === 'T1') {
+    return null;
+  }
+
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
 export const onRequestPost = async ({ request, env }: PagesContext): Promise<Response> => {
   const contentLength = Number(request.headers.get('Content-Length') || 0);
   if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
@@ -276,7 +291,7 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
         submission.fullName,
         submission.role,
         submission.organisation,
-        submission.country,
+        submission.country ?? countryFromRequest(request),
         submission.interest,
         submission.profileUrl,
         submission.note,

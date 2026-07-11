@@ -92,6 +92,8 @@ LIMIT 100;
 
 Do not paste waitlist exports into issues, public chats, logs, or the Git repository. Store exports only in an owner-approved, access-controlled location.
 
+Note on `country`: if the visitor leaves the field blank, the API fills it from Cloudflare's IP geolocation (`CF-IPCountry`, rendered as an English country name). A manually entered value always wins, and unknown/Tor origins stay `NULL`.
+
 ## Update a signup status
 
 Use the signup `id`, not an unescaped email value:
