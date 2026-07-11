@@ -123,6 +123,25 @@ function ComingSoonPage() {
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [submission, setSubmission] = useState<SubmissionState>({ kind: 'idle', message: '' });
   const [waitlistOpen, setWaitlistOpen] = useState(false);
+  const [showComing, setShowComing] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
+    let timer: number;
+    let coming = false;
+
+    const tick = () => {
+      coming = !coming;
+      setShowComing(coming);
+      timer = window.setTimeout(tick, coming ? 3600 : 5400);
+    };
+
+    timer = window.setTimeout(tick, 5400);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!waitlistOpen) {
@@ -290,9 +309,18 @@ function ComingSoonPage() {
           </p>
 
           <h1 className="cs-title rise d1">
-            The <br />
-            <span className="cs-gradient-word">Social</span> <br />
-            Economy.
+            <span className={`cs-title-layer${showComing ? ' is-away' : ''}`}>
+              The <br />
+              <span className="cs-gradient-word">Social</span> <br />
+              Economy.
+            </span>
+            <span
+              className={`cs-title-layer cs-title-alt${showComing ? '' : ' is-away'}`}
+              aria-hidden="true"
+            >
+              Coming <br />
+              <span className="cs-gradient-word">Soon.</span>
+            </span>
           </h1>
 
           <p className="cs-sub rise d2">

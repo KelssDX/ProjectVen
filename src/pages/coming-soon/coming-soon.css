@@ -1227,7 +1227,43 @@ img {
 }
 
 .cs-title {
+  position: relative;
   font-size: clamp(3.6rem, 6.2vw, 6.8rem);
+}
+
+/* headline warp: THE SOCIAL ECONOMY. <-> COMING SOON. */
+.cs-title-layer {
+  display: block;
+  transform-origin: left center;
+  transition:
+    opacity 0.55s ease-in,
+    filter 0.55s ease-in,
+    transform 0.55s ease-in;
+  transition-delay: 0.5s;
+  will-change: opacity, filter, transform;
+}
+
+.cs-title-layer.is-away {
+  opacity: 0;
+  filter: blur(18px);
+  transform: scaleX(1.24) scaleY(0.9);
+  transition-delay: 0s;
+  transition-timing-function: ease-out;
+  pointer-events: none;
+}
+
+.cs-title-alt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+}
+
+/* the warp replaces the small pill; keep the pill only when motion is reduced */
+@media (prefers-reduced-motion: no-preference) {
+  .cs-eyebrow {
+    display: none;
+  }
 }
 
 .cs-sub {
@@ -1413,13 +1449,26 @@ img {
   }
 
   .cs-tagline {
+    width: 100%;
+    justify-content: center;
     gap: 12px;
     font-size: 0.62rem;
+    text-align: center;
+  }
+
+  .cs-tagline .cs-rule {
+    display: none;
   }
 
   .cs-approved-art {
     width: 100%;
     aspect-ratio: 1.21;
+    /* The approved artwork ends through the crown of the rotunda. On narrow
+       screens, dissolve that edge into the page so it reads as atmosphere
+       rather than a rectangular crop. */
+    margin-top: -18px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
   }
 
   .cs-live-stars span:nth-child(n + 11) {
