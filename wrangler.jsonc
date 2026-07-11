@@ -2,5 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "vendrome-coming-soon",
   "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-07-10"
+  "compatibility_date": "2026-07-10",
+  "d1_databases": [
+    {
+      "binding": "WAITLIST_DB",
+      "database_name": "vendrome-waitlist",
+      "database_id": "47cdbf2c-f978-466b-8ab8-e3c326108c33"
+    }
+  ]
 }
