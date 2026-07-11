@@ -406,7 +406,6 @@ function ComingSoonPage() {
             <form className="cs-form" onSubmit={handleSubmit} hidden={succeeded}>
               <div className="cs-form-head">
                 <h2>Join the waitlist</h2>
-                <span>First wave</span>
               </div>
 
               <div className="cs-grid">
