@@ -37,6 +37,35 @@ const WORLD_TICKER = [
   'Entrepreneurs in Johannesburg',
 ];
 
+const COUNTRY_CODES = [
+  'AF', 'AX', 'AL', 'DZ', 'AS', 'AD', 'AO', 'AI', 'AG', 'AR', 'AM', 'AW', 'AU', 'AT', 'AZ',
+  'BS', 'BH', 'BD', 'BB', 'BY', 'BE', 'BZ', 'BJ', 'BM', 'BT', 'BO', 'BA', 'BW', 'BR', 'BN',
+  'BG', 'BF', 'BI', 'CV', 'KH', 'CM', 'CA', 'KY', 'CF', 'TD', 'CL', 'CN', 'CO', 'KM', 'CG',
+  'CD', 'CK', 'CR', 'CI', 'HR', 'CU', 'CW', 'CY', 'CZ', 'DK', 'DJ', 'DM', 'DO', 'EC', 'EG',
+  'SV', 'GQ', 'ER', 'EE', 'SZ', 'ET', 'FJ', 'FI', 'FR', 'GF', 'PF', 'GA', 'GM', 'GE', 'DE',
+  'GH', 'GI', 'GR', 'GL', 'GD', 'GP', 'GU', 'GT', 'GG', 'GN', 'GW', 'GY', 'HT', 'HN', 'HK',
+  'HU', 'IS', 'IN', 'ID', 'IR', 'IQ', 'IE', 'IM', 'IL', 'IT', 'JM', 'JP', 'JE', 'JO', 'KZ',
+  'KE', 'KI', 'KP', 'KR', 'KW', 'KG', 'LA', 'LV', 'LB', 'LS', 'LR', 'LY', 'LI', 'LT', 'LU',
+  'MO', 'MG', 'MW', 'MY', 'MV', 'ML', 'MT', 'MH', 'MQ', 'MR', 'MU', 'MX', 'FM', 'MD', 'MC',
+  'MN', 'ME', 'MS', 'MA', 'MZ', 'MM', 'NA', 'NR', 'NP', 'NL', 'NC', 'NZ', 'NI', 'NE', 'NG',
+  'MK', 'NO', 'OM', 'PK', 'PW', 'PS', 'PA', 'PG', 'PY', 'PE', 'PH', 'PL', 'PT', 'PR', 'QA',
+  'RE', 'RO', 'RU', 'RW', 'KN', 'LC', 'VC', 'WS', 'SM', 'ST', 'SA', 'SN', 'RS', 'SC', 'SL',
+  'SG', 'SX', 'SK', 'SI', 'SB', 'SO', 'ZA', 'SS', 'ES', 'LK', 'SD', 'SR', 'SE', 'CH', 'SY',
+  'TW', 'TJ', 'TZ', 'TH', 'TL', 'TG', 'TO', 'TT', 'TN', 'TR', 'TM', 'TC', 'TV', 'UG', 'UA',
+  'AE', 'GB', 'US', 'UY', 'UZ', 'VU', 'VA', 'VE', 'VN', 'VG', 'VI', 'YE', 'ZM', 'ZW',
+] as const;
+
+const COUNTRIES: string[] = (() => {
+  try {
+    const displayNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    return COUNTRY_CODES
+      .map((code) => displayNames.of(code) ?? code)
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [...COUNTRY_CODES];
+  }
+})();
+
 const ART_STARS = [
   [27, 5, 0, 2], [35, 13, 1.2, 1], [44, 7, 2.4, 1], [52, 16, 0.7, 2],
   [60, 4, 3.1, 1], [69, 12, 1.8, 1], [77, 7, 0.4, 2], [45, 23, 2.8, 1],
@@ -377,17 +406,17 @@ function ComingSoonPage() {
             <form className="cs-form" onSubmit={handleSubmit} hidden={succeeded}>
               <div className="cs-form-head">
                 <h2>Join the waitlist</h2>
-                <span>First wave &mdash; limited</span>
+                <span>First wave</span>
               </div>
 
               <div className="cs-grid">
                 <label className="cs-field">
-                  <span>Full name</span>
+                  <span>Full name <b className="cs-req" aria-hidden="true">*</b></span>
                   <input name="fullName" autoComplete="name" maxLength={100} required placeholder="Your name" autoFocus />
                 </label>
 
                 <label className="cs-field">
-                  <span>Email</span>
+                  <span>Email <b className="cs-req" aria-hidden="true">*</b></span>
                   <input
                     name="email"
                     type="email"
@@ -400,7 +429,7 @@ function ComingSoonPage() {
                 </label>
 
                 <label className="cs-field">
-                  <span>I am a...</span>
+                  <span>I am a... <b className="cs-req" aria-hidden="true">*</b></span>
                   <select name="role" required defaultValue="">
                     <option value="" disabled>Select your role</option>
                     {ROLE_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
@@ -408,7 +437,7 @@ function ComingSoonPage() {
                 </label>
 
                 <label className="cs-field">
-                  <span>Main interest</span>
+                  <span>Main interest <b className="cs-req" aria-hidden="true">*</b></span>
                   <select name="interest" required defaultValue="">
                     <option value="" disabled>What brings you here?</option>
                     {INTEREST_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
@@ -416,44 +445,42 @@ function ComingSoonPage() {
                 </label>
 
                 <label className="cs-field">
-                  <span>Business or organisation</span>
+                  <span>Business or organisation <i className="cs-opt">Optional</i></span>
                   <input
                     name="organisation"
                     autoComplete="organization"
                     maxLength={120}
-                    placeholder="Optional"
+                    placeholder="Your business name"
                   />
                 </label>
 
                 <label className="cs-field">
-                  <span>Country or region</span>
-                  <input
-                    name="country"
-                    autoComplete="country-name"
-                    maxLength={80}
-                    placeholder="Auto-detected if left blank"
-                  />
+                  <span>Country or region <i className="cs-opt">Optional</i></span>
+                  <select name="country" defaultValue="">
+                    <option value="">Select your country</option>
+                    {COUNTRIES.map((country) => <option value={country} key={country}>{country}</option>)}
+                  </select>
                 </label>
 
                 <label className="cs-field cs-field-wide">
-                  <span>Website or LinkedIn</span>
+                  <span>Website or LinkedIn <i className="cs-opt">Optional</i></span>
                   <input
                     name="profileUrl"
                     type="url"
                     inputMode="url"
                     autoComplete="url"
                     maxLength={300}
-                    placeholder="https:// (optional)"
+                    placeholder="https://"
                   />
                 </label>
 
                 <label className="cs-field cs-field-wide">
-                  <span>Anything you want us to know?</span>
+                  <span>Anything you want us to know? <i className="cs-opt">Optional</i></span>
                   <textarea
                     name="note"
                     rows={2}
                     maxLength={600}
-                    placeholder="Optional — what you hope to find or contribute"
+                    placeholder="What you hope to find or contribute"
                   />
                 </label>
 
@@ -465,7 +492,10 @@ function ComingSoonPage() {
 
               <label className="cs-consent">
                 <input name="consent" type="checkbox" required />
-                <span>Vendrome may use these details to manage the waitlist and send launch updates.</span>
+                <span>
+                  Vendrome may use these details to manage the waitlist and send launch updates.{' '}
+                  <b className="cs-req" aria-hidden="true">*</b>
+                </span>
               </label>
 
               <div className="cs-turnstile">

@@ -273,6 +273,7 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
           role,
           organisation,
           country,
+          ip_country,
           interest,
           profile_url,
           note,
@@ -281,7 +282,7 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
           source,
           status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'vendrome-coming-soon', 'waiting')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'vendrome-coming-soon', 'waiting')
         ON CONFLICT(email) DO NOTHING
       `,
     )
@@ -291,7 +292,8 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
         submission.fullName,
         submission.role,
         submission.organisation,
-        submission.country ?? countryFromRequest(request),
+        submission.country,
+        countryFromRequest(request),
         submission.interest,
         submission.profileUrl,
         submission.note,

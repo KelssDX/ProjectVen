@@ -16,13 +16,17 @@ const validSubmission = {
   turnstileToken: 'test-token',
 };
 
-function createRequest(payload = validSubmission, origin = 'https://vendrome.com') {
+function createRequest(payload = validSubmission, origin = 'https://vendrome.com', ipCountry = 'GB') {
+  const headers = {
+    'Content-Type': 'application/json',
+    Origin: origin,
+  };
+  if (ipCountry) {
+    headers['CF-IPCountry'] = ipCountry;
+  }
   return new Request('https://vendrome.com/api/waitlist', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Origin: origin,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
 }
@@ -87,6 +91,36 @@ test('Vendrome waitlist Pages Function', async (t) => {
       assert.equal(capture.values[1], 'ada@example.com');
       assert.equal(capture.values[2], 'Ada Founder');
       assert.equal(capture.values[3], 'entrepreneur');
+      assert.equal(capture.values[5], 'South Africa');
+      assert.equal(capture.values[6], 'United Kingdom');
+    });
+
+    await t.test('records the IP country even when no country is selected', async () => {
+      const { database, capture } = createDatabase(1);
+      globalThis.fetch = async () => Response.json({ success: true, action: 'waitlist' });
+
+      const response = await onRequestPost({
+        request: createRequest({ ...validSubmission, country: '' }, 'https://vendrome.com', 'ZA'),
+        env: { WAITLIST_DB: database, TURNSTILE_SECRET_KEY: 'test-secret' },
+      });
+
+      assert.equal(response.status, 201);
+      assert.equal(capture.values[5], null);
+      assert.equal(capture.values[6], 'South Africa');
+    });
+
+    await t.test('leaves ip_country null for unknown or Tor origins', async () => {
+      const { database, capture } = createDatabase(1);
+      globalThis.fetch = async () => Response.json({ success: true, action: 'waitlist' });
+
+      const response = await onRequestPost({
+        request: createRequest({ ...validSubmission, country: '' }, 'https://vendrome.com', 'T1'),
+        env: { WAITLIST_DB: database, TURNSTILE_SECRET_KEY: 'test-secret' },
+      });
+
+      assert.equal(response.status, 201);
+      assert.equal(capture.values[5], null);
+      assert.equal(capture.values[6], null);
     });
 
     await t.test('treats a duplicate email as a safe success', async () => {

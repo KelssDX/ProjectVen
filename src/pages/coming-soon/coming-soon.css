@@ -855,6 +855,22 @@ img {
   grid-column: 1 / -1;
 }
 
+.cs-req {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.cs-opt {
+  margin-left: 4px;
+  color: var(--slate-400);
+  font-size: 0.92em;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  opacity: 0.85;
+}
+
 .cs-field input,
 .cs-field select,
 .cs-field textarea {
@@ -886,7 +902,8 @@ img {
   cursor: pointer;
 }
 
-.cs-field select:invalid {
+.cs-field select:invalid,
+.cs-field select:has(option[value='']:checked) {
   color: var(--slate-400);
 }
 
@@ -1289,7 +1306,11 @@ img {
   display: block;
   width: 100%;
   aspect-ratio: 1.21;
-  margin-top: -100px;
+  /* Pin to the top of the grid row (not centred) so the negative margin lands
+     predictably, then cancel the header row (86px) plus the stage's own top
+     padding so the dome crown meets the very top with no strip above it. */
+  align-self: start;
+  margin-top: calc(-86px - clamp(18px, 2.5vh, 34px));
   margin-right: calc(-1 * clamp(16px, 3vw, 50px));
   overflow: hidden;
   border: 0;
@@ -1406,8 +1427,12 @@ img {
   .cs-approved-art {
     width: min(760px, 100%);
     aspect-ratio: 1.21;
-    margin-top: 0;
+    /* Once the layout stacks and the artwork sits below the copy, dissolve its
+       top edge into the page the same way the phone view does. */
+    margin-top: -18px;
     margin-inline: auto;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
   }
 }
 
@@ -1475,12 +1500,6 @@ img {
   .cs-approved-art {
     width: 100%;
     aspect-ratio: 1.21;
-    /* The approved artwork ends through the crown of the rotunda. On narrow
-       screens, dissolve that edge into the page so it reads as atmosphere
-       rather than a rectangular crop. */
-    margin-top: -18px;
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
-    mask-image: linear-gradient(to bottom, transparent 0%, #000 8%, #000 100%);
   }
 
   .cs-live-stars span:nth-child(n + 11) {

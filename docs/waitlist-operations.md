@@ -92,7 +92,14 @@ LIMIT 100;
 
 Do not paste waitlist exports into issues, public chats, logs, or the Git repository. Store exports only in an owner-approved, access-controlled location.
 
-Note on `country`: if the visitor leaves the field blank, the API fills it from Cloudflare's IP geolocation (`CF-IPCountry`, rendered as an English country name). A manually entered value always wins, and unknown/Tor origins stay `NULL`.
+Note on country columns:
+
+- `country` holds the visitor's own selection from the dropdown. It is optional and stays `NULL` when they skip it.
+- `ip_country` is always recorded from Cloudflare's IP geolocation (`CF-IPCountry`, rendered as an English country name), regardless of what they select. Unknown or Tor origins stay `NULL`.
+
+Keeping both lets you compare the declared country against the request origin — useful because a traveller or VPN user's IP country can differ from where they actually are.
+
+This column was added by `migrations/0002_ip_country.sql`.
 
 ## Update a signup status
 
